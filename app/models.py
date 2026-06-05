@@ -1,0 +1,55 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+
+BAG_STATUSES = {"valid", "broken", "missing_files", "unreadable", "unknown"}
+
+
+@dataclass(frozen=True)
+class TopicRecord:
+    name: str
+    type: str | None = None
+    serialization_format: str | None = None
+    message_count: int | None = None
+
+
+@dataclass(frozen=True)
+class BagRecord:
+    path: str
+    name: str
+    storage_identifier: str | None = None
+    starting_time: str | None = None
+    duration_ns: int | None = None
+    message_count: int | None = None
+    size_bytes: int = 0
+    status: str = "unknown"
+    error_message: str | None = None
+    topics: list[TopicRecord] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class ScanResult:
+    scanned: int = 0
+    valid: int = 0
+    broken: int = 0
+    missing_files: int = 0
+    unreadable: int = 0
+    unknown: int = 0
+    duration_seconds: float = 0.0
+
+    def increment(self, status: str) -> "ScanResult":
+        counts = {
+            "scanned": self.scanned + 1,
+            "valid": self.valid,
+            "broken": self.broken,
+            "missing_files": self.missing_files,
+            "unreadable": self.unreadable,
+            "unknown": self.unknown,
+            "duration_seconds": self.duration_seconds,
+        }
+        if status in counts:
+            counts[status] += 1
+        else:
+            counts["unknown"] += 1
+        return ScanResult(**counts)

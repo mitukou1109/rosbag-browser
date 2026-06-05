@@ -1,0 +1,14 @@
+services:
+  rosbag-browser:
+    build:
+      context: .
+      target: runtime
+    ports:
+      - "8000:8000"
+    environment:
+      BAG_ROOT: /bags
+      DB_PATH: /data/rosbag-browser.sqlite3
+    volumes:
+      - /share/Bags:/bags:ro
+      - /share/Container/rosbag-browser:/data
+    restart: unless-stopped

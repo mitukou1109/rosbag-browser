@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}{{ bag.name }} - ROS 2 Bag Browser{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="breadcrumb"><a href="/bags">Bags</a> / {{ bag.name }}</p>
+    <h1>{{ bag.name }}</h1>
+  </div>
+  <span class="status status-{{ bag.status }}">{{ bag.status }}</span>
+</section>
+
+<section class="summary-grid">
+  <div><span>Path</span><strong class="path">{{ bag.path }}</strong></div>
+  <div><span>Start</span><strong>{{ bag.starting_time or "" }}</strong></div>
+  <div><span>Duration</span><strong>{{ bag.duration_text }}</strong></div>
+  <div><span>Messages</span><strong>{{ bag.message_count if bag.message_count is not none else "" }}</strong></div>
+  <div><span>Storage</span><strong>{{ bag.storage_identifier or "" }}</strong></div>
+  <div><span>Size</span><strong>{{ bag.size_text }}</strong></div>
+  <div><span>Indexed</span><strong>{{ bag.indexed_at }}</strong></div>
+  <div><span>Modified</span><strong>{{ bag.modified_at }}</strong></div>
+</section>
+
+{% if bag.error_message %}
+<section class="alert">
+  {{ bag.error_message }}
+</section>
+{% endif %}
+
+<section class="edit-grid">
+  <form method="post" action="/bags/{{ bag.id }}/note">
+    <label for="note">Note</label>
+    <textarea id="note" name="note" rows="7">{{ bag.note }}</textarea>
+    <button type="submit">Save note</button>
+  </form>
+  <form method="post" action="/bags/{{ bag.id }}/tags">
+    <label for="tags">Tags</label>
+    <input id="tags" name="tags" value="{{ bag.tags_csv }}" placeholder="tag1, tag2">
+    <button type="submit">Save tags</button>
+  </form>
+</section>
+
+<section>
+  <h2>Topics</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Serialization</th>
+          <th>Messages</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for topic in topics %}
+        <tr>
+          <td class="path">{{ topic.name }}</td>
+          <td>{{ topic.type or "" }}</td>
+          <td>{{ topic.serialization_format or "" }}</td>
+          <td>{{ topic.message_count if topic.message_count is not none else "" }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="4" class="empty">No topics indexed.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
