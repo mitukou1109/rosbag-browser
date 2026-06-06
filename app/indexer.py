@@ -13,17 +13,17 @@ from app.models import BagRecord, ScanResult, TopicRecord
 from app.repository import upsert_bag
 
 
-BAG_FILE_SUFFIXES = {".mcap", ".db3", ".sqlite3"}
+BAG_FILE_SUFFIXES = {".mcap", ".db3"}
 
 
 def scan_bags(conn: sqlite3.Connection, bag_root: Path) -> ScanResult:
     start = time.monotonic()
     result = ScanResult()
     if not bag_root.exists():
-        return ScanResult(scanned=0, broken=1, duration_seconds=time.monotonic() - start)
+        return ScanResult(duration_seconds=time.monotonic() - start)
 
     for dirpath, _, filenames in os.walk(bag_root):
-        if not _is_bag_candidate(filenames):
+        if not _is_bag_candidate(Path(dirpath), filenames):
             continue
         bag = parse_bag_directory(Path(dirpath))
         upsert_bag(conn, bag)
@@ -99,10 +99,17 @@ def _error_bag(bag_dir: Path, error_message: str) -> BagRecord:
     )
 
 
-def _is_bag_candidate(filenames: list[str]) -> bool:
+def _is_bag_candidate(directory: Path, filenames: list[str]) -> bool:
     if "metadata.yaml" in filenames:
         return True
-    return any(Path(filename).suffix in BAG_FILE_SUFFIXES for filename in filenames)
+    return any(_looks_like_rosbag_file(directory, filename) for filename in filenames)
+
+
+def _looks_like_rosbag_file(directory: Path, filename: str) -> bool:
+    path = Path(filename)
+    if path.suffix not in BAG_FILE_SUFFIXES:
+        return False
+    return path.stem == directory.name or path.stem.startswith(f"{directory.name}_")
 
 
 def _parse_topics(value: Any) -> tuple[list[TopicRecord], list[str]]:

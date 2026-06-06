@@ -89,6 +89,37 @@ def test_scan_indexes_bag_file_directory_without_metadata_as_broken(tmp_path: Pa
     assert bags[0]["status"] == "broken"
 
 
+def test_scan_missing_bag_root_has_consistent_counts(tmp_path: Path) -> None:
+    db_path = tmp_path / "data.sqlite3"
+
+    with connect(db_path) as conn:
+        init_db(conn)
+        result = scan_bags(conn, tmp_path / "missing-root")
+        bags = search_bags(conn)
+
+    assert result.scanned == 0
+    assert result.valid == 0
+    assert result.broken == 0
+    assert bags == []
+
+
+def test_scan_ignores_unrelated_sqlite_files_without_metadata(tmp_path: Path) -> None:
+    bag_root = tmp_path / "bags"
+    sqlite_dir = bag_root / "app_data"
+    sqlite_dir.mkdir(parents=True)
+    (sqlite_dir / "index.sqlite3").write_bytes(b"abcdef")
+    db_path = tmp_path / "data.sqlite3"
+
+    with connect(db_path) as conn:
+        init_db(conn)
+        result = scan_bags(conn, bag_root)
+        bags = search_bags(conn)
+
+    assert result.scanned == 0
+    assert result.broken == 0
+    assert bags == []
+
+
 def test_scan_preserves_note_and_tags(tmp_path: Path) -> None:
     bag_root = tmp_path / "bags"
     db_path = tmp_path / "data.sqlite3"
