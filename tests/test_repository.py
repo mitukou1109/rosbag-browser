@@ -90,6 +90,9 @@ def test_search_by_topic_keyword_tag_and_period(tmp_path: Path) -> None:
         assert [
             bag["name"] for bag in search_bags(conn, topic="(camera OR imu) tf_static")
         ] == ["run_a"]
+        assert [
+            bag["name"] for bag in search_bags(conn, topic="camera) OR tf")
+        ] == ["run_b", "run_a"]
         assert [bag["name"] for bag in search_bags(conn, q="calibration")] == ["run_a"]
         assert [
             bag["name"] for bag in search_bags(conn, q="run_a calibration")
@@ -107,6 +110,9 @@ def test_search_by_topic_keyword_tag_and_period(tmp_path: Path) -> None:
         assert [
             bag["name"] for bag in search_bags(conn, q="run_a NOT (sunny OR failed)")
         ] == []
+        assert [
+            bag["name"] for bag in search_bags(conn, q="run_a) OR run_b")
+        ] == ["run_b", "run_a"]
         assert [bag["name"] for bag in search_bags(conn, q="Image")] == []
         assert [bag["name"] for bag in search_bags(conn, tag="field")] == ["run_a"]
         assert [
@@ -127,6 +133,13 @@ def test_search_by_topic_keyword_tag_and_period(tmp_path: Path) -> None:
         assert [
             bag["name"] for bag in search_bags(conn, start_from="2026-06-05T02:00")
         ] == ["run_b"]
+        assert [
+            bag["name"] for bag in search_bags(conn, start_from="not-a-date")
+        ] == ["run_b", "run_a"]
+        assert [bag["name"] for bag in search_bags(conn, start_to="not-a-date")] == [
+            "run_b",
+            "run_a",
+        ]
         assert get_bag(conn, bag_id)["starting_time_text"] == "2026/06/05 01:44:18"
         assert list_tags(conn) == ["camera", "field"]
 

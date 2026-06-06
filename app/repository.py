@@ -4,7 +4,7 @@ import json
 import os
 import sqlite3
 from collections.abc import Iterable
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -132,11 +132,17 @@ def search_bags(
         clauses.append(keyword_clause)
         params.extend(keyword_params)
     if start_from:
-        clauses.append("bags.starting_time >= ?")
-        params.append(local_datetime_bound_as_utc_text(start_from, upper_bound=False))
+        start_from_bound = local_datetime_bound_as_utc_text(
+            start_from, upper_bound=False
+        )
+        if start_from_bound is not None:
+            clauses.append("bags.starting_time >= ?")
+            params.append(start_from_bound)
     if start_to:
-        clauses.append("bags.starting_time <= ?")
-        params.append(local_datetime_bound_as_utc_text(start_to, upper_bound=True))
+        start_to_bound = local_datetime_bound_as_utc_text(start_to, upper_bound=True)
+        if start_to_bound is not None:
+            clauses.append("bags.starting_time <= ?")
+            params.append(start_to_bound)
 
     sql = [
         "SELECT DISTINCT bags.* FROM bags",
@@ -196,9 +202,13 @@ class SearchPatternParser:
     def __init__(self, tokens: list[str]) -> None:
         self.tokens = tokens
         self.index = 0
+        self.invalid = False
 
     def parse(self) -> tuple[str, Any] | None:
-        return self.parse_or()
+        node = self.parse_or()
+        if self.invalid or self.peek() is not None:
+            return None
+        return node
 
     def parse_or(self) -> tuple[str, Any] | None:
         nodes: list[tuple[str, Any]] = []
@@ -208,8 +218,10 @@ class SearchPatternParser:
         while self.peek_upper() == "OR":
             self.index += 1
             node = self.parse_and()
-            if node is not None:
-                nodes.append(node)
+            if node is None:
+                self.invalid = True
+                return None
+            nodes.append(node)
         return combine_nodes("or", nodes)
 
     def parse_and(self) -> tuple[str, Any] | None:
@@ -241,6 +253,9 @@ class SearchPatternParser:
             node = self.parse_or()
             if self.peek() == ")":
                 self.index += 1
+            else:
+                self.invalid = True
+                return None
             return node
         if token == ")" or token.upper() in {"AND", "OR"}:
             return None
@@ -431,7 +446,7 @@ def format_datetime_text(value: str | None) -> str:
     return text
 
 
-def local_datetime_bound_as_utc_text(value: str, *, upper_bound: bool) -> str:
+def local_datetime_bound_as_utc_text(value: str, *, upper_bound: bool) -> str | None:
     text = value.strip()
     for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
         try:
@@ -449,7 +464,10 @@ def local_datetime_bound_as_utc_text(value: str, *, upper_bound: bool) -> str:
             return local_dt.astimezone(timezone.utc).strftime("%Y/%m/%d %H:%M:%S")
         except ValueError:
             pass
-    parsed_date = datetime.strptime(text, "%Y-%m-%d").date()
+    try:
+        parsed_date = datetime.strptime(text, "%Y-%m-%d").date()
+    except ValueError:
+        return None
     local_dt = datetime.combine(
         parsed_date,
         time.max if upper_bound else time.min,
@@ -463,7 +481,14 @@ def local_timezone() -> timezone | ZoneInfo:
     try:
         return ZoneInfo(timezone_name)
     except ZoneInfoNotFoundError:
-        return datetime.now().astimezone().tzinfo or timezone.utc
+        fixed_timezones = {
+            "Asia/Tokyo": timezone(timedelta(hours=9), "JST"),
+            "Japan": timezone(timedelta(hours=9), "JST"),
+            "JST": timezone(timedelta(hours=9), "JST"),
+            "UTC": timezone.utc,
+            "Etc/UTC": timezone.utc,
+        }
+        return fixed_timezones.get(timezone_name, timezone.utc)
 
 
 def format_duration(duration_ns: int | None) -> str:
