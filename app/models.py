@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 
-BAG_STATUSES = {"valid", "broken", "missing_files", "unreadable", "unknown"}
+BAG_STATUSES = {"valid", "broken"}
 
 
 @dataclass(frozen=True)
@@ -23,7 +23,7 @@ class BagRecord:
     duration_ns: int | None = None
     message_count: int | None = None
     size_bytes: int = 0
-    status: str = "unknown"
+    status: str = "broken"
     error_message: str | None = None
     topics: list[TopicRecord] = field(default_factory=list)
 
@@ -33,9 +33,6 @@ class ScanResult:
     scanned: int = 0
     valid: int = 0
     broken: int = 0
-    missing_files: int = 0
-    unreadable: int = 0
-    unknown: int = 0
     duration_seconds: float = 0.0
 
     def increment(self, status: str) -> "ScanResult":
@@ -43,13 +40,10 @@ class ScanResult:
             "scanned": self.scanned + 1,
             "valid": self.valid,
             "broken": self.broken,
-            "missing_files": self.missing_files,
-            "unreadable": self.unreadable,
-            "unknown": self.unknown,
             "duration_seconds": self.duration_seconds,
         }
         if status in counts:
             counts[status] += 1
         else:
-            counts["unknown"] += 1
+            counts["broken"] += 1
         return ScanResult(**counts)

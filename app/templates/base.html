@@ -4,17 +4,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}ROS 2 Bag Browser{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}">
-    <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
+    <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}?v=20260606-2">
   </head>
   <body>
-    <header class="topbar">
-      <a class="brand" href="/bags">ROS 2 Bag Browser</a>
-      <nav>
-        <a href="/bags">Bags</a>
-        <a href="/scan">Scan</a>
-      </nav>
-    </header>
     <main class="page">
       {% block content %}{% endblock %}
     </main>

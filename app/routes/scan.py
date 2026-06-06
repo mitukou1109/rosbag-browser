@@ -34,3 +34,28 @@ def run_scan(request: Request) -> HTMLResponse:
         request=request,
         context={"request": request, "result": result, "bag_root": settings.bag_root},
     )
+
+
+@router.get("/scan/modal", response_class=HTMLResponse)
+def scan_modal(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        name="scan_modal.html",
+        request=request,
+        context={
+            "request": request,
+            "result": None,
+            "bag_root": request.app.state.settings.bag_root,
+        },
+    )
+
+
+@router.post("/scan/modal/run", response_class=HTMLResponse)
+def run_scan_modal(request: Request) -> HTMLResponse:
+    settings = request.app.state.settings
+    with connect(settings.db_path) as conn:
+        result = scan_bags(conn, settings.bag_root)
+    return templates.TemplateResponse(
+        name="scan_modal.html",
+        request=request,
+        context={"request": request, "result": result, "bag_root": settings.bag_root},
+    )

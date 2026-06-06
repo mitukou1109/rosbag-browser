@@ -3,21 +3,24 @@
 {% block content %}
 <section class="page-head">
   <div>
-    <p class="breadcrumb"><a href="/bags">Bags</a> / {{ bag.name }}</p>
-    <h1>{{ bag.name }}</h1>
+    <p class="breadcrumb"><a class="button secondary" href="/bags">Back</a></p>
+    <div class="title-row">
+      <h1>{{ bag.name }}</h1>
+      <span class="status status-{{ bag.status }}">{{ bag.status }}</span>
+    </div>
   </div>
-  <span class="status status-{{ bag.status }}">{{ bag.status }}</span>
 </section>
 
+<h2>Info</h2>
 <section class="summary-grid">
-  <div><span>Path</span><strong class="path">{{ bag.path }}</strong></div>
-  <div><span>Start</span><strong>{{ bag.starting_time or "" }}</strong></div>
+  <div><span>Path</span><strong class="path">{{ bag.path_display }}</strong></div>
+  <div><span>Start</span><strong>{{ bag.starting_time_text }}</strong></div>
   <div><span>Duration</span><strong>{{ bag.duration_text }}</strong></div>
   <div><span>Messages</span><strong>{{ bag.message_count if bag.message_count is not none else "" }}</strong></div>
-  <div><span>Storage</span><strong>{{ bag.storage_identifier or "" }}</strong></div>
+  <div><span>Storage ID</span><strong>{{ bag.storage_identifier or "" }}</strong></div>
   <div><span>Size</span><strong>{{ bag.size_text }}</strong></div>
-  <div><span>Indexed</span><strong>{{ bag.indexed_at }}</strong></div>
-  <div><span>Modified</span><strong>{{ bag.modified_at }}</strong></div>
+  <div><span>Indexed</span><strong>{{ bag.indexed_at_text }}</strong></div>
+  <div><span>Modified</span><strong>{{ bag.modified_at_text }}</strong></div>
 </section>
 
 {% if bag.error_message %}
@@ -27,16 +30,40 @@
 {% endif %}
 
 <section class="edit-grid">
-  <form method="post" action="/bags/{{ bag.id }}/note">
+  <form method="post" action="/bags/{{ bag.id }}/note" class="note-form">
     <label for="note">Note</label>
-    <textarea id="note" name="note" rows="7">{{ bag.note }}</textarea>
+    <textarea id="note" name="note">{{ bag.note }}</textarea>
     <button type="submit">Save note</button>
   </form>
-  <form method="post" action="/bags/{{ bag.id }}/tags">
-    <label for="tags">Tags</label>
-    <input id="tags" name="tags" value="{{ bag.tags_csv }}" placeholder="tag1, tag2">
-    <button type="submit">Save tags</button>
-  </form>
+  <div class="tag-editor">
+    <form method="post" action="/bags/{{ bag.id }}/tags/remove" class="tag-remove-form">
+      <span class="form-label">Current tags</span>
+      <div class="tag-check-list">
+        {% for tag in bag.tag_list %}
+        <label class="check-row">
+          <input type="checkbox" name="tags_to_remove" value="{{ tag }}">
+          <span>{{ tag }}</span>
+        </label>
+        {% else %}
+        <p class="muted">No tags</p>
+        {% endfor %}
+      </div>
+      <button type="submit" class="button danger">Remove Tag</button>
+    </form>
+
+    <form method="post" action="/bags/{{ bag.id }}/tags/add" class="tag-add-form">
+      <label for="tag">Add tag</label>
+      <div class="inline-action">
+        <input id="tag" name="tag" list="tag_options" placeholder="Select or type a tag">
+        <button type="submit">Add Tag</button>
+      </div>
+      <datalist id="tag_options">
+      {% for tag in tags %}
+        <option value="{{ tag }}"></option>
+      {% endfor %}
+      </datalist>
+    </form>
+  </div>
 </section>
 
 <section>

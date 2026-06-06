@@ -9,7 +9,7 @@
 </section>
 
 <form method="post" action="/scan" class="scan-form">
-  <button type="submit">Run scan</button>
+  <button type="submit">Scan</button>
 </form>
 
 {% if result %}
@@ -17,9 +17,6 @@
   <div><span>Scanned</span><strong>{{ result.scanned }}</strong></div>
   <div><span>Valid</span><strong>{{ result.valid }}</strong></div>
   <div><span>Broken</span><strong>{{ result.broken }}</strong></div>
-  <div><span>Missing files</span><strong>{{ result.missing_files }}</strong></div>
-  <div><span>Unreadable</span><strong>{{ result.unreadable }}</strong></div>
-  <div><span>Unknown</span><strong>{{ result.unknown }}</strong></div>
   <div><span>Duration</span><strong>{{ "%.2f"|format(result.duration_seconds) }}s</strong></div>
 </section>
 <p><a class="button" href="/bags">View bags</a></p>

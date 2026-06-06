@@ -3,75 +3,73 @@
 {% block content %}
 <section class="page-head">
   <h1>Bags</h1>
-  <a class="button" href="/scan">Run scan</a>
+  <div class="page-actions">
+    <span class="last-scanned">Last scanned: {{ last_scanned_at or "Never" }}</span>
+    <form method="post" action="/bags/scan" class="scan-form">
+      <button type="submit">Scan</button>
+    </form>
+  </div>
 </section>
 
 <form class="filters" method="get" action="/bags">
-  <label>
+  <label class="filter-topic">
     Topic
-    <input name="topic" value="{{ filters.topic }}" placeholder="/camera/image_raw">
+    <input name="topic" value="{{ filters.topic }}" placeholder="e.g. /front_camera/image_raw/compressed /front_lidar/points">
   </label>
-  <label>
-    Message type
-    <input name="type" value="{{ filters.type }}" placeholder="sensor_msgs/msg/Image">
+  <label class="filter-keyword">
+    Keyword (Name, Note)
+    <input name="q" value="{{ filters.q }}" placeholder="e.g. calibration AND NOT (test OR demo)">
   </label>
-  <label>
-    Keyword
-    <input name="q" value="{{ filters.q }}" placeholder="bag name, path, note, tag">
-  </label>
-  <label>
-    Tag
-    <input name="tag" value="{{ filters.tag }}" placeholder="test-run">
-  </label>
-  <label>
-    Status
-    <select name="status">
-      {% for item in statuses %}
-      <option value="{{ item }}" {% if filters.status == item %}selected{% endif %}>
-        {{ item or "any" }}
-      </option>
+  <label class="filter-tag">
+    Tags
+    <select name="tag">
+      <option value="">any</option>
+      {% for item in tags %}
+      <option value="{{ item }}" {% if filters.tag == item %}selected{% endif %}>{{ item }}</option>
       {% endfor %}
     </select>
   </label>
-  <button type="submit">Search</button>
-  <a class="button secondary" href="/bags">Clear</a>
+  <label class="filter-start">
+    Start from
+    <input type="datetime-local" name="start_from" value="{{ filters.start_from }}">
+  </label>
+  <label class="filter-end">
+    Start to
+    <input type="datetime-local" name="start_to" value="{{ filters.start_to }}">
+  </label>
+  <button type="submit" class="filter-search">Search</button>
+  <a class="button secondary filter-clear" href="/bags">Clear</a>
 </form>
 
 <div class="table-wrap">
-  <table>
+  <table class="bags-table">
     <thead>
       <tr>
-        <th>Bag</th>
-        <th>Path</th>
-        <th>Start</th>
-        <th>Duration</th>
-        <th>Messages</th>
-        <th>Storage</th>
-        <th>Status</th>
-        <th>Tags</th>
-        <th>Note</th>
+        <th class="col-fit">Name</th>
+        <th class="col-note">Note</th>
+        <th class="col-fit">Tags</th>
+        <th class="col-fit">Start</th>
+        <th class="col-fit">Duration</th>
       </tr>
     </thead>
     <tbody>
       {% for bag in bags %}
-      <tr>
-        <td><a href="/bags/{{ bag.id }}">{{ bag.name }}</a></td>
-        <td class="path">{{ bag.path }}</td>
-        <td>{{ bag.starting_time or "" }}</td>
-        <td>{{ bag.duration_text }}</td>
-        <td>{{ bag.message_count if bag.message_count is not none else "" }}</td>
-        <td>{{ bag.storage_identifier or "" }}</td>
-        <td><span class="status status-{{ bag.status }}">{{ bag.status }}</span></td>
-        <td>
+      <tr class="{% if bag.status == 'broken' %}row-broken{% endif %}">
+        <td class="col-fit">
+          <a href="/bags/{{ bag.id }}">{{ bag.name }}</a>
+        </td>
+        <td class="note col-note">{{ bag.note }}</td>
+        <td class="col-fit">
           {% for tag in bag.tag_list %}
           <span class="tag">{{ tag }}</span>
           {% endfor %}
         </td>
-        <td class="note">{{ bag.note }}</td>
+        <td class="col-fit">{{ bag.starting_time_text }}</td>
+        <td class="col-fit">{{ bag.duration_text }}</td>
       </tr>
       {% else %}
       <tr>
-        <td colspan="9" class="empty">No bags found.</td>
+        <td colspan="5" class="empty">No bags found.</td>
       </tr>
       {% endfor %}
     </tbody>

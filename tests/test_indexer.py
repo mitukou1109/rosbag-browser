@@ -48,7 +48,7 @@ def test_invalid_yaml_is_unreadable(tmp_path: Path) -> None:
 
     bag = parse_bag_directory(bag_dir)
 
-    assert bag.status == "unreadable"
+    assert bag.status == "broken"
     assert "invalid YAML" in (bag.error_message or "")
 
 
@@ -68,8 +68,26 @@ def test_missing_relative_file_is_missing_files(tmp_path: Path) -> None:
 
     bag = parse_bag_directory(bag_dir)
 
-    assert bag.status == "missing_files"
+    assert bag.status == "broken"
     assert "is missing" in (bag.error_message or "")
+
+
+def test_scan_indexes_bag_file_directory_without_metadata_as_broken(tmp_path: Path) -> None:
+    bag_root = tmp_path / "bags"
+    bag_dir = bag_root / "missing_metadata"
+    bag_dir.mkdir(parents=True)
+    (bag_dir / "missing_metadata_0.mcap").write_bytes(b"abcdef")
+    db_path = tmp_path / "data.sqlite3"
+
+    with connect(db_path) as conn:
+        init_db(conn)
+        result = scan_bags(conn, bag_root)
+        bags = search_bags(conn)
+
+    assert result.scanned == 1
+    assert result.broken == 1
+    assert bags[0]["name"] == "missing_metadata"
+    assert bags[0]["status"] == "broken"
 
 
 def test_scan_preserves_note_and_tags(tmp_path: Path) -> None:

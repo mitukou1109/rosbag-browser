@@ -1,0 +1,37 @@
+<div class="modal-backdrop" id="scan-modal">
+  <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="scan-title">
+    <header class="modal-head">
+      <div>
+        <h2 id="scan-title">Scan</h2>
+        <p class="muted">Bag root: <span class="path">{{ bag_root }}</span></p>
+      </div>
+      <button
+        class="button secondary modal-close"
+        type="button"
+        onclick="document.getElementById('modal-root').innerHTML = ''"
+        aria-label="Close"
+      >Close</button>
+    </header>
+
+    <form
+      method="post"
+      action="/scan/modal/run"
+      class="scan-form"
+      hx-post="/scan/modal/run"
+      hx-target="#modal-root"
+      hx-swap="innerHTML"
+    >
+      <button type="submit">Scan</button>
+    </form>
+
+    {% if result %}
+    <section class="summary-grid scan-result modal-result">
+      <div><span>Scanned</span><strong>{{ result.scanned }}</strong></div>
+      <div><span>Valid</span><strong>{{ result.valid }}</strong></div>
+      <div><span>Broken</span><strong>{{ result.broken }}</strong></div>
+      <div><span>Duration</span><strong>{{ "%.2f"|format(result.duration_seconds) }}s</strong></div>
+    </section>
+    <p><a class="button" href="/bags">View bags</a></p>
+    {% endif %}
+  </section>
+</div>

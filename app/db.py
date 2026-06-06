@@ -25,7 +25,7 @@ def init_db(conn: sqlite3.Connection) -> None:
           duration_ns INTEGER,
           message_count INTEGER,
           size_bytes INTEGER NOT NULL DEFAULT 0,
-          status TEXT NOT NULL DEFAULT 'unknown',
+          status TEXT NOT NULL DEFAULT 'broken',
           error_message TEXT,
           note TEXT NOT NULL DEFAULT '',
           tags TEXT NOT NULL DEFAULT '[]',
