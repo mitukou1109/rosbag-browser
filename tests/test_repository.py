@@ -143,6 +143,18 @@ def test_search_by_topic_keyword_tag_and_period(tmp_path: Path) -> None:
         assert get_bag(conn, bag_id)["starting_time_text"] == "2026/06/05 01:44:18"
         assert list_tags(conn) == ["camera", "field"]
 
+        unchanged_modified_at = "2026-01-01T00:00:00+00:00"
+        conn.execute(
+            "UPDATE bags SET modified_at = ? WHERE id = ?",
+            (unchanged_modified_at, bag_id),
+        )
+        add_tag(conn, bag_id, "")
+        add_tag(conn, bag_id, "camera")
+        remove_tags(conn, bag_id, [])
+        remove_tags(conn, bag_id, ["missing"])
+        conn.commit()
+        assert get_bag(conn, bag_id)["modified_at"] == unchanged_modified_at
+
         add_tag(conn, bag_id, "night")
         remove_tags(conn, bag_id, ["field"])
         conn.commit()

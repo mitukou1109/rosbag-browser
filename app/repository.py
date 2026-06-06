@@ -352,7 +352,9 @@ def update_note(conn: sqlite3.Connection, bag_id: int, note: str) -> None:
     )
 
 
-def update_tags(conn: sqlite3.Connection, bag_id: int, raw_tags: str) -> None:
+def update_tags(
+    conn: sqlite3.Connection, bag_id: int, raw_tags: str | Iterable[str]
+) -> None:
     tags = tags_to_text(normalize_tags(raw_tags))
     conn.execute(
         "UPDATE bags SET tags = ?, modified_at = ? WHERE id = ?",
@@ -364,7 +366,13 @@ def add_tag(conn: sqlite3.Connection, bag_id: int, tag: str) -> None:
     bag = get_bag(conn, bag_id)
     if bag is None:
         return
-    update_tags(conn, bag_id, [*bag["tag_list"], tag])
+    tags_to_add = normalize_tags([tag])
+    if not tags_to_add:
+        return
+    tag_to_add = tags_to_add[0]
+    if tag_to_add in bag["tag_list"]:
+        return
+    update_tags(conn, bag_id, [*bag["tag_list"], tag_to_add])
 
 
 def remove_tags(conn: sqlite3.Connection, bag_id: int, tags_to_remove: Iterable[str]) -> None:
@@ -372,7 +380,12 @@ def remove_tags(conn: sqlite3.Connection, bag_id: int, tags_to_remove: Iterable[
     if bag is None:
         return
     removals = set(normalize_tags(tags_to_remove))
-    update_tags(conn, bag_id, [tag for tag in bag["tag_list"] if tag not in removals])
+    if not removals:
+        return
+    remaining_tags = [tag for tag in bag["tag_list"] if tag not in removals]
+    if remaining_tags == bag["tag_list"]:
+        return
+    update_tags(conn, bag_id, remaining_tags)
 
 
 def list_tags(conn: sqlite3.Connection) -> list[str]:
