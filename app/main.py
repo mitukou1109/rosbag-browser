@@ -14,7 +14,7 @@ def create_app() -> FastAPI:
     with connect(settings.db_path) as conn:
         init_db(conn)
 
-    app = FastAPI(title="ROS 2 Bag Browser")
+    app = FastAPI(title="rosbag Browser")
     app.state.settings = settings
     app.mount("/static", StaticFiles(directory="app/static"), name="static")
     app.include_router(bags.router)
