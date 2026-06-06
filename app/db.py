@@ -25,7 +25,7 @@ def init_db(conn: sqlite3.Connection) -> None:
           duration_ns INTEGER,
           message_count INTEGER,
           size_bytes INTEGER NOT NULL DEFAULT 0,
-          status TEXT NOT NULL DEFAULT 'unknown',
+          status TEXT NOT NULL DEFAULT 'broken',
           error_message TEXT,
           note TEXT NOT NULL DEFAULT '',
           tags TEXT NOT NULL DEFAULT '[]',
@@ -49,41 +49,4 @@ def init_db(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_topics_bag_id ON topics(bag_id);
         """
     )
-    _init_fts(conn)
     conn.commit()
-
-
-def _init_fts(conn: sqlite3.Connection) -> None:
-    try:
-        conn.execute(
-            """
-            CREATE VIRTUAL TABLE IF NOT EXISTS bag_search USING fts5(
-              name,
-              path,
-              note,
-              tags,
-              topic_names,
-              topic_types
-            )
-            """
-        )
-    except sqlite3.OperationalError:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS bag_search_unavailable (
-              id INTEGER PRIMARY KEY CHECK (id = 1),
-              reason TEXT NOT NULL
-            )
-            """
-        )
-        conn.execute(
-            "INSERT OR REPLACE INTO bag_search_unavailable (id, reason) VALUES (1, ?)",
-            ("SQLite FTS5 extension is unavailable",),
-        )
-
-
-def has_fts(conn: sqlite3.Connection) -> bool:
-    row = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'bag_search'"
-    ).fetchone()
-    return row is not None

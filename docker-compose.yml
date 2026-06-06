@@ -8,6 +8,7 @@ services:
     environment:
       BAG_ROOT: /bags
       DB_PATH: /data/rosbag-browser.sqlite3
+      TZ: ${TZ:-Asia/Tokyo}
     volumes:
       - /share/Bags:/bags:ro
       - /share/Container/rosbag-browser:/data

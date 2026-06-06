@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -12,14 +13,17 @@ from app.models import BagRecord, ScanResult, TopicRecord
 from app.repository import upsert_bag
 
 
+BAG_FILE_SUFFIXES = {".mcap", ".db3"}
+
+
 def scan_bags(conn: sqlite3.Connection, bag_root: Path) -> ScanResult:
     start = time.monotonic()
     result = ScanResult()
     if not bag_root.exists():
-        return ScanResult(scanned=0, unknown=1, duration_seconds=time.monotonic() - start)
+        return ScanResult(duration_seconds=time.monotonic() - start)
 
     for dirpath, _, filenames in os.walk(bag_root):
-        if "metadata.yaml" not in filenames:
+        if not _is_bag_candidate(Path(dirpath), filenames):
             continue
         bag = parse_bag_directory(Path(dirpath))
         upsert_bag(conn, bag)
@@ -29,31 +33,29 @@ def scan_bags(conn: sqlite3.Connection, bag_root: Path) -> ScanResult:
         scanned=result.scanned,
         valid=result.valid,
         broken=result.broken,
-        missing_files=result.missing_files,
-        unreadable=result.unreadable,
-        unknown=result.unknown,
         duration_seconds=time.monotonic() - start,
     )
 
 
 def parse_bag_directory(bag_dir: Path) -> BagRecord:
     metadata_path = bag_dir / "metadata.yaml"
+    if not metadata_path.exists():
+        return _error_bag(bag_dir, "metadata.yaml is missing")
     try:
         with metadata_path.open("r", encoding="utf-8") as handle:
             loaded = yaml.safe_load(handle)
     except OSError as exc:
-        return _error_bag(bag_dir, "unreadable", f"metadata.yaml is unreadable: {exc}")
+        return _error_bag(bag_dir, f"metadata.yaml is unreadable: {exc}")
     except yaml.YAMLError as exc:
-        return _error_bag(bag_dir, "unreadable", f"metadata.yaml is invalid YAML: {exc}")
+        return _error_bag(bag_dir, f"metadata.yaml is invalid YAML: {exc}")
 
     if not isinstance(loaded, dict):
-        return _error_bag(bag_dir, "broken", "metadata.yaml root is not a mapping")
+        return _error_bag(bag_dir, "metadata.yaml root is not a mapping")
 
     info = loaded.get("rosbag2_bagfile_information")
     if not isinstance(info, dict):
         return _error_bag(
             bag_dir,
-            "broken",
             "rosbag2_bagfile_information is missing or not a mapping",
         )
 
@@ -62,12 +64,12 @@ def parse_bag_directory(bag_dir: Path) -> BagRecord:
     errors = topics_result[1]
 
     relative_paths = info.get("relative_file_paths")
-    file_status, file_error, size_bytes = _check_bag_files(bag_dir, relative_paths)
+    files_are_valid, file_error, size_bytes = _check_bag_files(bag_dir, relative_paths)
     if errors:
         status = "broken"
         error_message = "; ".join(errors)
-    elif file_status != "valid":
-        status = file_status
+    elif not files_are_valid:
+        status = "broken"
         error_message = file_error
     else:
         status = "valid"
@@ -87,14 +89,27 @@ def parse_bag_directory(bag_dir: Path) -> BagRecord:
     )
 
 
-def _error_bag(bag_dir: Path, status: str, error_message: str) -> BagRecord:
+def _error_bag(bag_dir: Path, error_message: str) -> BagRecord:
     return BagRecord(
         path=str(bag_dir),
         name=bag_dir.name,
-        status=status,
+        status="broken",
         error_message=error_message,
         size_bytes=_directory_size(bag_dir),
     )
+
+
+def _is_bag_candidate(directory: Path, filenames: list[str]) -> bool:
+    if "metadata.yaml" in filenames:
+        return True
+    return any(_looks_like_rosbag_file(directory, filename) for filename in filenames)
+
+
+def _looks_like_rosbag_file(directory: Path, filename: str) -> bool:
+    path = Path(filename)
+    if path.suffix not in BAG_FILE_SUFFIXES:
+        return False
+    return path.stem == directory.name or path.stem.startswith(f"{directory.name}_")
 
 
 def _parse_topics(value: Any) -> tuple[list[TopicRecord], list[str]]:
@@ -127,10 +142,10 @@ def _parse_topics(value: Any) -> tuple[list[TopicRecord], list[str]]:
 
 def _check_bag_files(
     bag_dir: Path, relative_file_paths: Any
-) -> tuple[str, str | None, int]:
+) -> tuple[bool, str | None, int]:
     if not isinstance(relative_file_paths, list) or not relative_file_paths:
         return (
-            "missing_files",
+            False,
             "relative_file_paths is missing or empty",
             _directory_size(bag_dir),
         )
@@ -159,8 +174,8 @@ def _check_bag_files(
         size_bytes += file_size
 
     if problems:
-        return "missing_files", "; ".join(problems), size_bytes
-    return "valid", None, size_bytes
+        return False, "; ".join(problems), size_bytes
+    return True, None, size_bytes
 
 
 def _directory_size(directory: Path) -> int:
@@ -208,9 +223,20 @@ def _normalize_starting_time(value: Any) -> str | None:
         return None
     if isinstance(value, dict):
         if "nanoseconds_since_epoch" in value:
-            return str(value["nanoseconds_since_epoch"])
+            ns = _optional_int(value["nanoseconds_since_epoch"])
+            if ns is not None:
+                return _format_epoch_ns(ns)
         if "sec" in value or "nanosec" in value:
-            sec = value.get("sec", 0)
-            nanosec = value.get("nanosec", 0)
-            return f"{sec}.{str(nanosec).zfill(9)}"
+            sec = _optional_int(value.get("sec")) or 0
+            nanosec = _optional_int(value.get("nanosec")) or 0
+            return _format_epoch_ns(sec * 1_000_000_000 + nanosec)
+    numeric = _optional_int(value)
+    if numeric is not None and numeric > 10_000_000_000:
+        return _format_epoch_ns(numeric)
     return str(value)
+
+
+def _format_epoch_ns(value: int) -> str:
+    return datetime.fromtimestamp(value / 1_000_000_000, timezone.utc).strftime(
+        "%Y/%m/%d %H:%M:%S"
+    )
