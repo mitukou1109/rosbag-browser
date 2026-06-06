@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "rosbag-browser"
 version = "0.1.0"
-description = "A lightweight ROS 2 bag metadata browser for NAS-hosted bag archives."
+description = "A lightweight ROS 2 bag browser for bag archives."
 requires-python = ">=3.10"
 dependencies = [
   "fastapi>=0.115,<1.0",

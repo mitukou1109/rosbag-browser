@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 
 from app.db import connect, init_db
@@ -11,9 +10,9 @@ from app.repository import get_bag, search_bags, update_note, update_tags
 def test_parse_valid_mcap_metadata(tmp_path: Path) -> None:
     bag_dir = _make_bag(
         tmp_path,
-        "rosbag2_2026_06_04-16_44_18-5",
+        "rosbag2_2026_06_04-16_44_18",
         storage_identifier="mcap",
-        file_name="rosbag2_2026_06_04-16_44_18-5_0.mcap",
+        file_name="rosbag2_2026_06_04-16_44_18_0.mcap",
     )
 
     bag = parse_bag_directory(bag_dir)
