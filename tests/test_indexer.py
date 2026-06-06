@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from app.db import connect, init_db
@@ -141,6 +142,29 @@ def test_scan_preserves_note_and_tags(tmp_path: Path) -> None:
     assert updated is not None
     assert updated["note"] == "important run"
     assert updated["tag_list"] == ["field", "camera"]
+
+
+def test_scan_removes_deleted_bag_from_index(tmp_path: Path) -> None:
+    bag_root = tmp_path / "bags"
+    db_path = tmp_path / "data.sqlite3"
+    deleted_bag = _make_bag(bag_root, "deleted_bag")
+    _make_bag(bag_root, "remaining_bag")
+
+    with connect(db_path) as conn:
+        init_db(conn)
+        result = scan_bags(conn, bag_root)
+        assert result.scanned == 2
+        assert [bag["name"] for bag in search_bags(conn)] == [
+            "deleted_bag",
+            "remaining_bag",
+        ]
+
+        shutil.rmtree(deleted_bag)
+        result = scan_bags(conn, bag_root)
+        bags = search_bags(conn)
+
+    assert result.scanned == 1
+    assert [bag["name"] for bag in bags] == ["remaining_bag"]
 
 
 def _make_bag(

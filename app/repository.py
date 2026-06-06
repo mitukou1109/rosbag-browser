@@ -106,6 +106,28 @@ def upsert_bag(conn: sqlite3.Connection, bag: BagRecord) -> int:
     return bag_id
 
 
+def delete_stale_bag_indexes(
+    conn: sqlite3.Connection, bag_root: Path, current_paths: set[str]
+) -> int:
+    root_path = bag_root.resolve()
+    rows = conn.execute("SELECT id, path FROM bags").fetchall()
+    deleted = 0
+    for row in rows:
+        path_value = row["path"]
+        if not path_value:
+            continue
+        bag_path = Path(path_value).resolve()
+        try:
+            bag_path.relative_to(root_path)
+        except ValueError:
+            continue
+        if str(bag_path) in current_paths:
+            continue
+        conn.execute("DELETE FROM bags WHERE id = ?", (row["id"],))
+        deleted += 1
+    return deleted
+
+
 def search_bags(
     conn: sqlite3.Connection,
     *,

@@ -10,7 +10,7 @@ from typing import Any
 import yaml
 
 from app.models import BagRecord, ScanResult, TopicRecord
-from app.repository import upsert_bag
+from app.repository import delete_stale_bag_indexes, upsert_bag
 
 
 BAG_FILE_SUFFIXES = {".mcap", ".db3"}
@@ -19,15 +19,21 @@ BAG_FILE_SUFFIXES = {".mcap", ".db3"}
 def scan_bags(conn: sqlite3.Connection, bag_root: Path) -> ScanResult:
     start = time.monotonic()
     result = ScanResult()
+    current_paths: set[str] = set()
     if not bag_root.exists():
+        delete_stale_bag_indexes(conn, bag_root, current_paths)
+        conn.commit()
         return ScanResult(duration_seconds=time.monotonic() - start)
 
     for dirpath, _, filenames in os.walk(bag_root):
         if not _is_bag_candidate(Path(dirpath), filenames):
             continue
-        bag = parse_bag_directory(Path(dirpath))
+        bag_dir = Path(dirpath)
+        current_paths.add(str(bag_dir.resolve()))
+        bag = parse_bag_directory(bag_dir)
         upsert_bag(conn, bag)
         result = result.increment(bag.status)
+    delete_stale_bag_indexes(conn, bag_root, current_paths)
     conn.commit()
     return ScanResult(
         scanned=result.scanned,
