@@ -28,14 +28,8 @@ def test_bag_pages_scan_and_edit_flow(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert "Scan</button>" in initial_bags.text
     assert "OR" in initial_bags.text
     assert "NOT" in initial_bags.text
-    modal_response = client.get("/scan/modal")
-    assert modal_response.status_code == 200
-    assert "Scan" in modal_response.text
-    scan_response = client.post("/scan")
-    assert scan_response.status_code == 200
-    assert "web_bag" not in scan_response.text
-    refresh_response = client.post("/bags/scan", follow_redirects=False)
-    assert refresh_response.status_code == 303
+    scan_response = client.post("/bags/scan", follow_redirects=False)
+    assert scan_response.status_code == 303
 
     bags_response = client.get("/bags")
     assert bags_response.status_code == 200

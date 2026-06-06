@@ -66,7 +66,6 @@ def list_bags(
 
 
 @router.post("/bags/scan")
-@router.post("/bags/refresh")
 def scan_bags_from_list(request: Request) -> RedirectResponse:
     settings = request.app.state.settings
     with connect(settings.db_path) as conn:

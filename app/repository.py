@@ -9,8 +9,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from app.db import has_fts
-from app.models import BAG_STATUSES, BagRecord, TopicRecord
+from app.models import BagRecord, TopicRecord
 
 
 def utc_now() -> str:
@@ -104,38 +103,7 @@ def upsert_bag(conn: sqlite3.Connection, bag: BagRecord) -> int:
             for topic in bag.topics
         ],
     )
-    refresh_search_row(conn, bag_id)
     return bag_id
-
-
-def refresh_search_row(conn: sqlite3.Connection, bag_id: int) -> None:
-    if not has_fts(conn):
-        return
-    bag = conn.execute("SELECT * FROM bags WHERE id = ?", (bag_id,)).fetchone()
-    if bag is None:
-        return
-    topics = conn.execute(
-        "SELECT name, type FROM topics WHERE bag_id = ? ORDER BY name", (bag_id,)
-    ).fetchall()
-    tags = " ".join(tags_from_text(bag["tags"]))
-    topic_names = " ".join(str(row["name"] or "") for row in topics)
-    topic_types = " ".join(str(row["type"] or "") for row in topics)
-    conn.execute("DELETE FROM bag_search WHERE rowid = ?", (bag_id,))
-    conn.execute(
-        """
-        INSERT INTO bag_search (rowid, name, path, note, tags, topic_names, topic_types)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            bag_id,
-            bag["name"],
-            bag["path"],
-            bag["note"],
-            tags,
-            topic_names,
-            topic_types,
-        ),
-    )
 
 
 def search_bags(
@@ -340,14 +308,6 @@ def keyword_predicate(term: str) -> tuple[str, list[Any]]:
     return "(bags.name LIKE ? OR bags.note LIKE ?)", [like, like]
 
 
-def _fts_query(q: str) -> str:
-    tokens = [token.replace('"', " ").strip() for token in q.split()]
-    tokens = [token for token in tokens if token]
-    if not tokens:
-        return '""'
-    return " ".join(f'"{token}"' for token in tokens)
-
-
 def get_bag(
     conn: sqlite3.Connection, bag_id: int, *, bag_root: Path | None = None
 ) -> dict[str, Any] | None:
@@ -375,7 +335,6 @@ def update_note(conn: sqlite3.Connection, bag_id: int, note: str) -> None:
         "UPDATE bags SET note = ?, modified_at = ? WHERE id = ?",
         (note, utc_now(), bag_id),
     )
-    refresh_search_row(conn, bag_id)
 
 
 def update_tags(conn: sqlite3.Connection, bag_id: int, raw_tags: str) -> None:
@@ -384,7 +343,6 @@ def update_tags(conn: sqlite3.Connection, bag_id: int, raw_tags: str) -> None:
         "UPDATE bags SET tags = ?, modified_at = ? WHERE id = ?",
         (tags, utc_now(), bag_id),
     )
-    refresh_search_row(conn, bag_id)
 
 
 def add_tag(conn: sqlite3.Connection, bag_id: int, tag: str) -> None:

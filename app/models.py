@@ -3,9 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 
-BAG_STATUSES = {"valid", "broken"}
-
-
 @dataclass(frozen=True)
 class TopicRecord:
     name: str
