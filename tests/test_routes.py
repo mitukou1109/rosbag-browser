@@ -25,9 +25,10 @@ def test_bag_pages_scan_and_edit_flow(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert initial_bags.status_code == 200
     assert "Scan" in initial_bags.text
     assert "Last scanned: Never" in initial_bags.text
-    assert "Scan</button>" in initial_bags.text
+    assert "Current bag root" not in initial_bags.text
     assert "OR" in initial_bags.text
     assert "NOT" in initial_bags.text
+    assert client.post("/settings/bag-root", data={"bag_root": str(tmp_path)}).status_code == 403
     scan_response = client.post("/bags/scan", follow_redirects=False)
     assert scan_response.status_code == 303
 
@@ -56,6 +57,71 @@ def test_bag_pages_scan_and_edit_flow(monkeypatch: pytest.MonkeyPatch, tmp_path:
     )
     removed = client.get("/bags/1")
     assert "route" in removed.text
+
+
+def test_local_mode_selects_root_and_uses_root_db(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    bag_root = tmp_path / "portable-bags"
+    other_root = tmp_path / "other-bags"
+    _make_bag(bag_root, "local_bag")
+    _make_bag(other_root, "other_bag")
+    invalid_file = tmp_path / "not-a-directory"
+    invalid_file.write_text("x", encoding="utf-8")
+    monkeypatch.delenv("BAG_ROOT", raising=False)
+    monkeypatch.delenv("DB_PATH", raising=False)
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg-data"))
+
+    main = importlib.import_module("app.main")
+    client = TestClient(main.create_app())
+
+    initial_bags = client.get("/bags")
+    assert initial_bags.status_code == 200
+    assert "Current bag root" in initial_bags.text
+    assert "Not selected" in initial_bags.text
+
+    scan_without_root = client.post("/bags/scan", follow_redirects=False)
+    assert scan_without_root.status_code == 303
+    assert "root_error=" in scan_without_root.headers["location"]
+
+    invalid_response = client.post(
+        "/settings/bag-root",
+        data={"bag_root": str(invalid_file)},
+        follow_redirects=True,
+    )
+    assert invalid_response.status_code == 200
+    assert "is not a directory" in invalid_response.text
+
+    select_response = client.post(
+        "/settings/bag-root",
+        data={"bag_root": str(bag_root)},
+        follow_redirects=False,
+    )
+    assert select_response.status_code == 303
+    assert (bag_root / ".rosbag-browser" / "rosbag-browser.sqlite3").exists()
+
+    selected_bags = client.get("/bags")
+    assert str(bag_root) in selected_bags.text
+    assert "local_bag" not in selected_bags.text
+
+    assert client.post("/bags/scan", follow_redirects=False).status_code == 303
+    scanned_bags = client.get("/bags")
+    assert "local_bag" in scanned_bags.text
+    assert str(bag_root) in scanned_bags.text
+
+    detail_response = client.get("/bags/1")
+    assert detail_response.status_code == 200
+    assert "local_bag" in detail_response.text
+
+    other_select_response = client.post(
+        "/settings/bag-root",
+        data={"bag_root": str(bag_root), "recent_bag_root": str(other_root)},
+        follow_redirects=False,
+    )
+    assert other_select_response.status_code == 303
+    other_bags = client.get("/bags")
+    assert str(other_root) in other_bags.text
+    assert str(bag_root) in other_bags.text
 
 
 def _make_bag(root: Path, name: str) -> Path:

@@ -162,3 +162,42 @@ def test_search_by_topic_keyword_tag_and_period(tmp_path: Path) -> None:
 
         assert updated is not None
         assert updated["tag_list"] == ["camera", "night"]
+
+
+def test_upsert_uses_root_relative_path_as_stable_identity(tmp_path: Path) -> None:
+    db_path = tmp_path / "data.sqlite3"
+    first_root = tmp_path / "first"
+    second_root = tmp_path / "second"
+    with connect(db_path) as conn:
+        init_db(conn)
+        bag_id = upsert_bag(
+            conn,
+            BagRecord(
+                path=str(first_root / "run_a"),
+                root_relative_path="run_a",
+                name="run_a",
+                status="valid",
+            ),
+        )
+        update_note(conn, bag_id, "keep me")
+        update_tags(conn, bag_id, "portable")
+        conn.commit()
+
+        updated_id = upsert_bag(
+            conn,
+            BagRecord(
+                path=str(second_root / "run_a"),
+                root_relative_path="run_a",
+                name="run_a",
+                status="broken",
+            ),
+        )
+        conn.commit()
+        updated = get_bag(conn, updated_id, bag_root=second_root)
+
+    assert updated_id == bag_id
+    assert updated is not None
+    assert updated["path"] == str(second_root / "run_a")
+    assert updated["path_display"] == "run_a"
+    assert updated["note"] == "keep me"
+    assert updated["tag_list"] == ["portable"]
