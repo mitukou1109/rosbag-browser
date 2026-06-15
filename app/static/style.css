@@ -128,12 +128,26 @@ h2 {
 }
 
 .filters,
+.root-selector,
 .edit-grid,
 .summary-grid {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 16px;
+}
+
+.root-selector {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.root-form {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(260px, 2fr) minmax(180px, 1fr) auto;
 }
 
 .filters {
@@ -223,6 +237,11 @@ button:hover,
 .button:hover {
   background: var(--accent-strong);
   text-decoration: none;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .button.secondary {
@@ -368,6 +387,11 @@ tr:last-child td {
   padding: 12px 14px;
 }
 
+.alert.compact {
+  margin-bottom: 0;
+  padding: 8px 10px;
+}
+
 .edit-grid {
   --edit-field-gap: 10px;
   --edit-label-height: 18px;
@@ -483,11 +507,14 @@ tr:last-child td {
 
 @media (max-width: 980px) {
   .filters,
+  .root-form,
   .summary-grid,
   .edit-grid {
     grid-template-columns: 1fr;
   }
 
+  .root-input,
+  .root-history,
   .filter-topic,
   .filter-keyword,
   .filter-tag,

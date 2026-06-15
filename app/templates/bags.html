@@ -6,10 +6,38 @@
   <div class="page-actions">
     <span class="last-scanned">Last scanned: {{ last_scanned_at or "Never" }}</span>
     <form method="post" action="/bags/scan" class="scan-form">
-      <button type="submit">Scan</button>
+      <button type="submit" {% if root_selector.enabled and not root_selector.current %}disabled{% endif %}>Scan</button>
     </form>
   </div>
 </section>
+
+{% if root_selector.enabled %}
+<section class="root-selector">
+  <div>
+    <span class="form-label">Current bag root</span>
+    <strong class="path">{{ root_selector.current or "Not selected" }}</strong>
+  </div>
+  {% if root_selector.error %}
+  <div class="alert compact">{{ root_selector.error }}</div>
+  {% endif %}
+  <form method="post" action="/settings/bag-root" class="root-form">
+    <label class="root-input">
+      Bag root path
+      <input name="bag_root" placeholder="{{ root_selector.current or '/media/user/portable-ssd/bags' }}">
+    </label>
+    <label class="root-history">
+      Recent roots
+      <select name="recent_bag_root">
+        <option value="">Select recent root</option>
+        {% for item in root_selector.recent %}
+        <option value="{{ item }}">{{ item }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit">Use root</button>
+  </form>
+</section>
+{% endif %}
 
 <form class="filters" method="get" action="/bags">
   <label class="filter-topic">

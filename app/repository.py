@@ -50,39 +50,66 @@ def tags_from_text(value: str | None) -> list[str]:
 
 def upsert_bag(conn: sqlite3.Connection, bag: BagRecord) -> int:
     now = utc_now()
-    conn.execute(
-        """
-        INSERT INTO bags (
-          path, name, storage_identifier, starting_time, duration_ns,
-          message_count, size_bytes, status, error_message, indexed_at, modified_at
+    existing = _find_existing_bag_row(conn, bag)
+    if existing is None:
+        conn.execute(
+            """
+            INSERT INTO bags (
+              path, root_relative_path, name, storage_identifier, starting_time,
+              duration_ns, message_count, size_bytes, status, error_message,
+              indexed_at, modified_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                bag.path,
+                bag.root_relative_path,
+                bag.name,
+                bag.storage_identifier,
+                bag.starting_time,
+                bag.duration_ns,
+                bag.message_count,
+                bag.size_bytes,
+                bag.status,
+                bag.error_message,
+                now,
+                now,
+            ),
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(path) DO UPDATE SET
-          name = excluded.name,
-          storage_identifier = excluded.storage_identifier,
-          starting_time = excluded.starting_time,
-          duration_ns = excluded.duration_ns,
-          message_count = excluded.message_count,
-          size_bytes = excluded.size_bytes,
-          status = excluded.status,
-          error_message = excluded.error_message,
-          indexed_at = excluded.indexed_at
-        """,
-        (
-            bag.path,
-            bag.name,
-            bag.storage_identifier,
-            bag.starting_time,
-            bag.duration_ns,
-            bag.message_count,
-            bag.size_bytes,
-            bag.status,
-            bag.error_message,
-            now,
-            now,
-        ),
-    )
-    row = conn.execute("SELECT id FROM bags WHERE path = ?", (bag.path,)).fetchone()
+        row = conn.execute("SELECT id FROM bags WHERE path = ?", (bag.path,)).fetchone()
+    else:
+        conn.execute(
+            """
+            UPDATE bags SET
+              path = ?,
+              root_relative_path = ?,
+              name = ?,
+              storage_identifier = ?,
+              starting_time = ?,
+              duration_ns = ?,
+              message_count = ?,
+              size_bytes = ?,
+              status = ?,
+              error_message = ?,
+              indexed_at = ?
+            WHERE id = ?
+            """,
+            (
+                bag.path,
+                bag.root_relative_path,
+                bag.name,
+                bag.storage_identifier,
+                bag.starting_time,
+                bag.duration_ns,
+                bag.message_count,
+                bag.size_bytes,
+                bag.status,
+                bag.error_message,
+                now,
+                existing["id"],
+            ),
+        )
+        row = conn.execute("SELECT id FROM bags WHERE id = ?", (existing["id"],)).fetchone()
     if row is None:
         raise RuntimeError(f"Failed to upsert bag: {bag.path}")
     bag_id = int(row["id"])
@@ -106,13 +133,75 @@ def upsert_bag(conn: sqlite3.Connection, bag: BagRecord) -> int:
     return bag_id
 
 
+def _find_existing_bag_row(
+    conn: sqlite3.Connection, bag: BagRecord
+) -> sqlite3.Row | None:
+    if bag.root_relative_path:
+        row = conn.execute(
+            "SELECT id FROM bags WHERE root_relative_path = ?",
+            (bag.root_relative_path,),
+        ).fetchone()
+        if row is not None:
+            return row
+    return conn.execute("SELECT id FROM bags WHERE path = ?", (bag.path,)).fetchone()
+
+
+def root_relative_path(path_value: str | Path, bag_root: Path) -> str | None:
+    path = Path(path_value).resolve()
+    try:
+        return path.relative_to(bag_root.resolve()).as_posix()
+    except ValueError:
+        return None
+
+
+def bag_belongs_to_root(row_or_item: sqlite3.Row | dict[str, Any], bag_root: Path) -> bool:
+    if row_or_item["root_relative_path"]:
+        return True
+    return root_relative_path(row_or_item["path"], bag_root) is not None
+
+
+def bag_record_for_root(bag: BagRecord, bag_root: Path) -> BagRecord:
+    return BagRecord(
+        path=bag.path,
+        root_relative_path=root_relative_path(bag.path, bag_root),
+        name=bag.name,
+        storage_identifier=bag.storage_identifier,
+        starting_time=bag.starting_time,
+        duration_ns=bag.duration_ns,
+        message_count=bag.message_count,
+        size_bytes=bag.size_bytes,
+        status=bag.status,
+        error_message=bag.error_message,
+        topics=bag.topics,
+    )
+
+
 def delete_stale_bag_indexes(
-    conn: sqlite3.Connection, bag_root: Path, current_paths: set[str]
+    conn: sqlite3.Connection,
+    bag_root: Path,
+    current_paths: set[str],
+    *,
+    prune_by_relative_paths: bool = False,
 ) -> int:
     root_path = bag_root.resolve()
-    rows = conn.execute("SELECT id, path FROM bags").fetchall()
+    current_relative_paths = {
+        relative for path in current_paths if (relative := root_relative_path(path, root_path))
+    }
+    rows = conn.execute("SELECT id, path, root_relative_path FROM bags").fetchall()
     deleted = 0
     for row in rows:
+        row_relative_path = row["root_relative_path"]
+        if row_relative_path:
+            if row_relative_path in current_relative_paths:
+                continue
+            if not prune_by_relative_paths and root_relative_path(
+                row["path"], root_path
+            ) is None:
+                continue
+            conn.execute("DELETE FROM bags WHERE id = ?", (row["id"],))
+            deleted += 1
+            continue
+
         path_value = row["path"]
         if not path_value:
             continue
@@ -174,6 +263,8 @@ def search_bags(
         sql.append("WHERE " + " AND ".join(clauses))
     sql.append("ORDER BY bags.starting_time DESC, bags.name ASC")
     rows = conn.execute(" ".join(sql), params).fetchall()
+    if bag_root is not None:
+        rows = [row for row in rows if bag_belongs_to_root(row, bag_root)]
     items = [_bag_row_to_dict(row, bag_root=bag_root) for row in rows]
     if tag:
         items = [item for item in items if tag in item["tag_list"]]
@@ -351,6 +442,8 @@ def get_bag(
     row = conn.execute("SELECT * FROM bags WHERE id = ?", (bag_id,)).fetchone()
     if row is None:
         return None
+    if bag_root is not None and not bag_belongs_to_root(row, bag_root):
+        return None
     return _bag_row_to_dict(row, bag_root=bag_root)
 
 
@@ -410,19 +503,33 @@ def remove_tags(conn: sqlite3.Connection, bag_id: int, tags_to_remove: Iterable[
     update_tags(conn, bag_id, remaining_tags)
 
 
-def list_tags(conn: sqlite3.Connection) -> list[str]:
+def list_tags(conn: sqlite3.Connection, *, bag_root: Path | None = None) -> list[str]:
     tags: set[str] = set()
-    rows = conn.execute("SELECT tags FROM bags ORDER BY name").fetchall()
+    rows = conn.execute("SELECT path, root_relative_path, tags FROM bags ORDER BY name").fetchall()
     for row in rows:
+        if bag_root is not None and not bag_belongs_to_root(row, bag_root):
+            continue
         tags.update(tags_from_text(row["tags"]))
     return sorted(tags)
 
 
-def get_last_scanned_at(conn: sqlite3.Connection) -> str:
-    row = conn.execute("SELECT MAX(indexed_at) AS last_scanned_at FROM bags").fetchone()
-    if row is None:
+def get_last_scanned_at(conn: sqlite3.Connection, *, bag_root: Path | None = None) -> str:
+    if bag_root is None:
+        row = conn.execute("SELECT MAX(indexed_at) AS last_scanned_at FROM bags").fetchone()
+        if row is None:
+            return ""
+        return format_datetime_text(row["last_scanned_at"])
+    rows = conn.execute(
+        "SELECT path, root_relative_path, indexed_at FROM bags"
+    ).fetchall()
+    values = [
+        row["indexed_at"]
+        for row in rows
+        if row["indexed_at"] and bag_belongs_to_root(row, bag_root)
+    ]
+    if not values:
         return ""
-    return format_datetime_text(row["last_scanned_at"])
+    return format_datetime_text(max(values))
 
 
 def _bag_row_to_dict(row: sqlite3.Row, *, bag_root: Path | None = None) -> dict[str, Any]:
@@ -435,8 +542,15 @@ def _bag_row_to_dict(row: sqlite3.Row, *, bag_root: Path | None = None) -> dict[
     item["starting_time_text"] = format_datetime_text(item.get("starting_time"))
     item["indexed_at_text"] = format_datetime_text(item.get("indexed_at"))
     item["modified_at_text"] = format_datetime_text(item.get("modified_at"))
-    item["path_display"] = relative_path(item.get("path"), bag_root)
+    item["path_display"] = display_path(item, bag_root)
     return item
+
+
+def display_path(item: dict[str, Any], bag_root: Path | None) -> str:
+    root_relative = item.get("root_relative_path")
+    if root_relative:
+        return str(root_relative)
+    return relative_path(item.get("path"), bag_root)
 
 
 def relative_path(path_value: str | None, bag_root: Path | None) -> str:

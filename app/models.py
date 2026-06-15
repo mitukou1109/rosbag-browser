@@ -15,6 +15,7 @@ class TopicRecord:
 class BagRecord:
     path: str
     name: str
+    root_relative_path: str | None = None
     storage_identifier: str | None = None
     starting_time: str | None = None
     duration_ns: int | None = None

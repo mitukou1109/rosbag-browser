@@ -109,6 +109,10 @@ def test_scan_ignores_unrelated_sqlite_files_without_metadata(tmp_path: Path) ->
     sqlite_dir = bag_root / "app_data"
     sqlite_dir.mkdir(parents=True)
     (sqlite_dir / "index.sqlite3").write_bytes(b"abcdef")
+    app_data_dir = bag_root / ".rosbag-browser"
+    app_data_dir.mkdir(parents=True)
+    (app_data_dir / "metadata.yaml").write_text("not a bag\n", encoding="utf-8")
+    (app_data_dir / "rosbag-browser.sqlite3").write_bytes(b"abcdef")
     db_path = tmp_path / "data.sqlite3"
 
     with connect(db_path) as conn:
@@ -171,6 +175,38 @@ def test_scan_removes_deleted_bag_from_index(tmp_path: Path) -> None:
 
     assert result.scanned == 1
     assert [bag["name"] for bag in bags] == ["external_bag", "remaining_bag"]
+
+
+def test_scan_preserves_metadata_after_root_path_changes(tmp_path: Path) -> None:
+    original_root = tmp_path / "mount-a"
+    moved_root = tmp_path / "mount-b"
+    db_path = original_root / ".rosbag-browser" / "rosbag-browser.sqlite3"
+    _make_bag(original_root, "portable_bag")
+
+    with connect(db_path) as conn:
+        init_db(conn)
+        result = scan_bags(conn, original_root)
+        assert result.scanned == 1
+        bag = search_bags(conn, bag_root=original_root)[0]
+        update_note(conn, bag["id"], "portable note")
+        update_tags(conn, bag["id"], "ssd, field")
+        conn.commit()
+
+    shutil.move(str(original_root), str(moved_root))
+    moved_db_path = moved_root / ".rosbag-browser" / "rosbag-browser.sqlite3"
+
+    with connect(moved_db_path) as conn:
+        init_db(conn)
+        result = scan_bags(conn, moved_root)
+        bags = search_bags(conn, bag_root=moved_root)
+
+    assert result.scanned == 1
+    assert len(bags) == 1
+    assert bags[0]["name"] == "portable_bag"
+    assert bags[0]["note"] == "portable note"
+    assert bags[0]["tag_list"] == ["ssd", "field"]
+    assert bags[0]["path"] == str(moved_root / "portable_bag")
+    assert bags[0]["path_display"] == "portable_bag"
 
 
 def _make_bag(

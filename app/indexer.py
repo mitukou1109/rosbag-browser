@@ -10,30 +10,46 @@ from typing import Any
 import yaml
 
 from app.models import BagRecord, ScanResult, TopicRecord
-from app.repository import delete_stale_bag_indexes, upsert_bag
+from app.repository import bag_record_for_root, delete_stale_bag_indexes, upsert_bag
 
 
 BAG_FILE_SUFFIXES = {".mcap", ".db3"}
 
 
-def scan_bags(conn: sqlite3.Connection, bag_root: Path) -> ScanResult:
+def scan_bags(
+    conn: sqlite3.Connection,
+    bag_root: Path,
+    *,
+    prune_by_relative_paths: bool = False,
+) -> ScanResult:
     start = time.monotonic()
     result = ScanResult()
     current_paths: set[str] = set()
     if not bag_root.exists():
-        delete_stale_bag_indexes(conn, bag_root, current_paths)
+        delete_stale_bag_indexes(
+            conn,
+            bag_root,
+            current_paths,
+            prune_by_relative_paths=prune_by_relative_paths,
+        )
         conn.commit()
         return ScanResult(duration_seconds=time.monotonic() - start)
 
-    for dirpath, _, filenames in os.walk(bag_root):
+    for dirpath, dirnames, filenames in os.walk(bag_root):
+        dirnames[:] = [dirname for dirname in dirnames if dirname != ".rosbag-browser"]
         if not _is_bag_candidate(Path(dirpath), filenames):
             continue
         bag_dir = Path(dirpath)
         current_paths.add(str(bag_dir.resolve()))
-        bag = parse_bag_directory(bag_dir)
+        bag = bag_record_for_root(parse_bag_directory(bag_dir), bag_root)
         upsert_bag(conn, bag)
         result = result.increment(bag.status)
-    delete_stale_bag_indexes(conn, bag_root, current_paths)
+    delete_stale_bag_indexes(
+        conn,
+        bag_root,
+        current_paths,
+        prune_by_relative_paths=prune_by_relative_paths,
+    )
     conn.commit()
     return ScanResult(
         scanned=result.scanned,
