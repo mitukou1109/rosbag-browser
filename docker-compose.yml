@@ -3,6 +3,8 @@ services:
     build:
       context: .
       target: runtime
+    image: rosbag-browser
+    container_name: rosbag-browser
     ports:
       - "8000:8000"
     environment:
@@ -10,6 +12,6 @@ services:
       DB_PATH: /data/rosbag-browser.sqlite3
       TZ: ${TZ:-Asia/Tokyo}
     volumes:
-      - /share/Bags:/bags:ro
+      - ${HOST_BAG_ROOT:-/share/Bags}:/bags:ro
       - /share/Container/rosbag-browser:/data
     restart: unless-stopped

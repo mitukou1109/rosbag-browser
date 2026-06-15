@@ -29,17 +29,14 @@ uv run rosbag-browser --reload
 
 ## Dockerで使う
 
-NASなどサーバーで運用する場合は、`docker-compose.yml` または環境変数で `BAG_ROOT` と `DB_PATH` を設定します。
-ルートディレクトリはUIから変更できません。
+NASなどサーバーで運用する場合は、ルートディレクトリ（既定は `/share/Bags`）を `HOST_BAG_ROOT` で指定して起動します。
 
 ```bash
 docker compose build rosbag-browser
-docker compose up
+HOST_BAG_ROOT=/path/to/Bags docker compose up
 ```
 
 上記実行後、ブラウザで `http://<your-host>:8000` を開いてください。
-Python、HTML、CSSの変更はrebuildなしで反映されます。
-依存関係、`Dockerfile`、`pyproject.toml` を変更した場合は再度ビルドしてください。
 
 ## テスト
 
