@@ -92,11 +92,19 @@ nav {
   gap: 12px;
 }
 
+.detail-heading {
+  width: 100%;
+}
+
 .title-row {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.download-action {
+  margin-left: auto;
 }
 
 .last-scanned {
