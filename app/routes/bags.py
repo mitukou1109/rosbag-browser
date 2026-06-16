@@ -8,7 +8,7 @@ import sqlite3
 import struct
 from pathlib import Path
 from typing import Annotated
-from urllib.parse import quote, urlencode, urlsplit
+from urllib.parse import parse_qsl, quote, urlencode, urlsplit
 
 from fastapi import APIRouter, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
@@ -19,10 +19,12 @@ from app.config import (
     current_bag_root,
     db_path_for_bag_root,
     load_local_root_state,
+    merge_output_root,
     set_local_bag_root,
 )
 from app.db import connect, init_db
 from app.indexer import scan_bags
+from app.merger import BagMergeError, default_merge_name, merge_bag_directories
 from app.repository import (
     add_tag,
     get_bag,
@@ -50,6 +52,8 @@ def list_bags(
     start_from: Annotated[str | None, Query()] = None,
     start_to: Annotated[str | None, Query()] = None,
     root_error: Annotated[str | None, Query()] = None,
+    merge_error: Annotated[str | None, Query()] = None,
+    merge_message: Annotated[str | None, Query()] = None,
 ) -> HTMLResponse:
     settings = request.app.state.settings
     bag_root = current_bag_root(settings)
@@ -57,6 +61,7 @@ def list_bags(
     tags = []
     last_scanned_at = ""
     if bag_root is not None:
+        output_root = merge_output_root(settings, bag_root)
         with _active_db(settings) as (active_root, conn):
             bags = search_bags(
                 conn,
@@ -85,6 +90,12 @@ def list_bags(
             },
             "tags": tags,
             "last_scanned_at": last_scanned_at,
+            "merge": {
+                "default_name": default_merge_name(),
+                "output_root": str(output_root) if bag_root is not None else "",
+                "error": merge_error or "",
+                "message": merge_message or "",
+            },
             "root_selector": {
                 "enabled": not settings.is_fixed_root,
                 "current": str(bag_root) if bag_root is not None else "",
@@ -133,6 +144,52 @@ def scan_bags_from_list(request: Request) -> RedirectResponse:
             prune_by_relative_paths=not settings.is_fixed_root,
         )
     return RedirectResponse(url=_bags_referrer_path(request), status_code=303)
+
+
+@router.post("/bags/merge")
+def merge_bags_from_list(
+    request: Request,
+    bag_ids: Annotated[list[int] | None, Form()] = None,
+    output_name: Annotated[str, Form()] = "",
+) -> RedirectResponse:
+    selected_ids = _unique_ids(bag_ids or [])
+    if len(selected_ids) < 2:
+        return _redirect_to_bags_with(
+            request,
+            {"merge_error": "Select at least two bags to merge"},
+        )
+
+    settings = request.app.state.settings
+    try:
+        with _active_db(settings) as (bag_root, conn):
+            bags = []
+            for bag_id in selected_ids:
+                bag = get_bag(conn, bag_id, bag_root=bag_root)
+                if bag is None:
+                    raise BagMergeError(f"Bag {bag_id} was not found")
+                if bag["status"] != "valid":
+                    raise BagMergeError(f"{bag['name']} is broken and cannot be merged")
+                bags.append(bag)
+
+            output_root = merge_output_root(settings, bag_root)
+            target = merge_bag_directories(
+                [_bag_directory_path(bag, bag_root) for bag in bags],
+                output_root,
+                output_name,
+            )
+            if _path_is_under(target, bag_root):
+                scan_bags(
+                    conn,
+                    bag_root,
+                    prune_by_relative_paths=not settings.is_fixed_root,
+                )
+    except (BagMergeError, OSError) as exc:
+        return _redirect_to_bags_with(request, {"merge_error": str(exc)})
+
+    return _redirect_to_bags_with(
+        request,
+        {"merge_message": f"Merged {len(selected_ids)} bags to {target}"},
+    )
 
 
 @router.get("/bags/{bag_id}", response_class=HTMLResponse)
@@ -219,6 +276,17 @@ def _clean(value: str | None) -> str | None:
     return value or None
 
 
+def _unique_ids(values: list[int]) -> list[int]:
+    seen: set[int] = set()
+    result: list[int] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
+
+
 def _bag_directory_path(bag: dict[str, object], bag_root: Path) -> Path:
     root = bag_root.resolve()
     relative_path = bag.get("root_relative_path")
@@ -236,6 +304,14 @@ def _bag_directory_path(bag: dict[str, object], bag_root: Path) -> Path:
     if not bag_dir.is_dir():
         raise HTTPException(status_code=404, detail="Bag files not found")
     return bag_dir
+
+
+def _path_is_under(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+    except ValueError:
+        return False
+    return True
 
 
 def _iter_bag_archive(bag_dir: Path) -> Iterator[bytes]:
@@ -460,3 +536,20 @@ def _bags_referrer_path(request: Request) -> str:
         return "/bags"
     query = f"?{parsed.query}" if parsed.query else ""
     return f"/bags{query}"
+
+
+def _redirect_to_bags_with(
+    request: Request,
+    params: dict[str, str],
+) -> RedirectResponse:
+    referrer_path = _bags_referrer_path(request)
+    parsed = urlsplit(referrer_path)
+    query_items = [
+        (key, value)
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+        if key not in {"merge_error", "merge_message"}
+    ]
+    query_items.extend(params.items())
+    query = urlencode(query_items)
+    url = f"/bags?{query}" if query else "/bags"
+    return RedirectResponse(url=url, status_code=303)

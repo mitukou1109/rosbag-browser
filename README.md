@@ -7,6 +7,7 @@ rosbagを管理・検索するアプリ
 - `/bags` でbag一覧を表示
   - ローカル起動時は任意のルートディレクトリを選択
   - Scanで手動インデックス更新
+  - 複数bagを選択してマージ
   - bagの破損をチェック（現状はファイルの欠損のみ確認）
   - トピック名、キーワード（bag名、メモ）、タグ、記録開始時刻で検索
 - `/bags/{id}` で概要とトピック一覧を表示
@@ -27,14 +28,16 @@ uv run rosbag-browser --reload
 
 上記実行後、ブラウザで `http://localhost:8000` を開き、`Current bag root` からルートディレクトリを指定してください。
 ポートを変更する場合は `uv run rosbag-browser --port 8001 --reload` のように指定できます。
+マージしたbagは、現在選択しているbag root直下に書き出されます。
 
 ## Dockerで使う
 
 NASなどサーバーで運用する場合は、ルートディレクトリ（既定は `/share/Bags`）を `HOST_BAG_ROOT` で指定して起動します。
+マージしたbagは、`HOST_BAG_OUTPUT_ROOT` （既定は `/share/Container/rosbag-browser`）で指定したディレクトリに書き出されます。
 
 ```bash
 docker compose build rosbag-browser
-HOST_BAG_ROOT=/path/to/Bags docker compose up
+HOST_BAG_ROOT=/path/to/bags HOST_BAG_OUTPUT_ROOT=/path/to/output docker compose up
 ```
 
 上記実行後、ブラウザで `http://<your-host>:8000` を開いてください。

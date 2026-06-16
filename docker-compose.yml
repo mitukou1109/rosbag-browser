@@ -9,9 +9,11 @@ services:
       - "8000:8000"
     environment:
       BAG_ROOT: /bags
+      BAG_OUTPUT_ROOT: /bag-output
       DB_PATH: /data/rosbag-browser.sqlite3
       TZ: ${TZ:-Asia/Tokyo}
     volumes:
       - ${HOST_BAG_ROOT:-/share/Bags}:/bags:ro
-      - /share/Container/rosbag-browser:/data
+      - ${HOST_BAG_OUTPUT_ROOT:-/share/Container/rosbag-browser}:/bag-output:rw
+      - /share/Container/rosbag-browser:/data:rw
     restart: unless-stopped

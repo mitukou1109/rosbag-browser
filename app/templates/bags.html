@@ -39,6 +39,13 @@
 </section>
 {% endif %}
 
+{% if merge.message %}
+<section class="notice compact">{{ merge.message }}</section>
+{% endif %}
+{% if merge.error %}
+<section class="alert compact">{{ merge.error }}</section>
+{% endif %}
+
 <form class="filters" method="get" action="/bags">
   <label class="filter-topic">
     Topic
@@ -69,10 +76,24 @@
   <a class="button secondary filter-clear" href="/bags">Clear</a>
 </form>
 
+<form class="merge-form" method="post" action="/bags/merge">
+  <section class="merge-panel">
+    <div>
+      <span class="form-label">Merge output root</span>
+      <strong class="path">{{ merge.output_root or "Not available" }}</strong>
+    </div>
+    <label>
+      Output bag name
+      <input name="output_name" placeholder="{{ merge.default_name }}">
+    </label>
+    <button type="submit" {% if not merge.output_root %}disabled{% endif %}>Merge selected</button>
+  </section>
+
 <div class="table-wrap">
   <table class="bags-table">
     <thead>
       <tr>
+        <th class="col-select">Select</th>
         <th class="col-fit">Name</th>
         <th class="col-note">Note</th>
         <th class="col-fit">Tags</th>
@@ -83,6 +104,14 @@
     <tbody>
       {% for bag in bags %}
       <tr class="{% if bag.status == 'broken' %}row-broken{% endif %}">
+        <td class="col-select">
+          <input
+            type="checkbox"
+            name="bag_ids"
+            value="{{ bag.id }}"
+            {% if bag.status != 'valid' %}disabled{% endif %}
+          >
+        </td>
         <td class="col-fit">
           <a href="/bags/{{ bag.id }}">{{ bag.name }}</a>
         </td>
@@ -97,10 +126,11 @@
       </tr>
       {% else %}
       <tr>
-        <td colspan="5" class="empty">No bags found.</td>
+        <td colspan="6" class="empty">No bags found.</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
+</form>
 {% endblock %}

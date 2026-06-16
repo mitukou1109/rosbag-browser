@@ -149,6 +149,7 @@ h2 {
 }
 
 .filters,
+.merge-panel,
 .root-selector,
 .edit-grid,
 .summary-grid {
@@ -177,6 +178,19 @@ h2 {
   gap: 12px;
   grid-template-columns: minmax(180px, 2fr) minmax(140px, 1fr) minmax(140px, 1fr) auto auto;
   margin-bottom: 18px;
+}
+
+.merge-form {
+  display: grid;
+  gap: 0;
+}
+
+.merge-panel {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(240px, 1fr) minmax(220px, 320px) auto;
+  margin-bottom: 12px;
 }
 
 .filter-topic,
@@ -307,6 +321,21 @@ table {
   width: auto;
 }
 
+.bags-table .col-select {
+  text-align: center;
+  white-space: nowrap;
+  width: 1%;
+}
+
+.col-select input {
+  appearance: auto;
+  height: 16px;
+  margin: 0;
+  min-height: 0;
+  padding: 0;
+  width: 16px;
+}
+
 th,
 td {
   border-bottom: 1px solid var(--line);
@@ -365,7 +394,7 @@ tr:last-child td {
   color: var(--danger);
 }
 
-.row-broken td:first-child {
+.row-broken td:nth-child(2) {
   background: #fff2f0;
   box-shadow: inset 4px 0 0 var(--danger);
 }
@@ -410,6 +439,19 @@ tr:last-child td {
 
 .alert.compact {
   margin-bottom: 0;
+  padding: 8px 10px;
+}
+
+.notice {
+  background: #edf8f0;
+  border: 1px solid #badfc5;
+  border-radius: 8px;
+  color: var(--ok);
+  margin-bottom: 18px;
+  padding: 12px 14px;
+}
+
+.notice.compact {
   padding: 8px 10px;
 }
 
@@ -528,6 +570,7 @@ tr:last-child td {
 
 @media (max-width: 980px) {
   .filters,
+  .merge-panel,
   .root-form,
   .summary-grid,
   .edit-grid {

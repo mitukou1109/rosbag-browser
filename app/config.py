@@ -22,6 +22,7 @@ class LocalRootState:
 @dataclass(frozen=True)
 class Settings:
     fixed_bag_root: Path | None
+    bag_output_root: Path | None
     db_path: Path
     local_state_path: Path
 
@@ -34,6 +35,7 @@ def get_settings() -> Settings:
     fixed_bag_root = _optional_path_from_env("BAG_ROOT")
     return Settings(
         fixed_bag_root=fixed_bag_root,
+        bag_output_root=_optional_path_from_env("BAG_OUTPUT_ROOT"),
         db_path=Path(os.environ.get("DB_PATH", "/data/rosbag-browser.sqlite3")).resolve(),
         local_state_path=local_state_path(),
     )
@@ -135,6 +137,10 @@ def db_path_for_bag_root(settings: Settings, bag_root: Path) -> Path:
     if settings.fixed_bag_root is not None:
         return settings.db_path
     return bag_root / LOCAL_APP_DIR_NAME / LOCAL_DB_FILENAME
+
+
+def merge_output_root(settings: Settings, bag_root: Path) -> Path:
+    return settings.bag_output_root or bag_root
 
 
 def _state_path(value: Any) -> Path | None:

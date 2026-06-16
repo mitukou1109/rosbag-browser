@@ -14,10 +14,13 @@ from fastapi.testclient import TestClient
 
 def test_bag_pages_scan_and_edit_flow(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     bag_root = tmp_path / "bags"
+    output_root = tmp_path / "merged-output"
     data_dir = tmp_path / "data"
     db_path = data_dir / "app.sqlite3"
     _make_bag(bag_root, "web_bag")
+    _make_bag(bag_root, "web_bag_2")
     monkeypatch.setenv("BAG_ROOT", str(bag_root))
+    monkeypatch.setenv("BAG_OUTPUT_ROOT", str(output_root))
     monkeypatch.setenv("DB_PATH", str(db_path))
 
     main = importlib.import_module("app.main")
@@ -26,6 +29,7 @@ def test_bag_pages_scan_and_edit_flow(monkeypatch: pytest.MonkeyPatch, tmp_path:
     initial_bags = client.get("/bags")
     assert initial_bags.status_code == 200
     assert "Scan" in initial_bags.text
+    assert "Merge selected" in initial_bags.text
     assert "Last scanned: Never" in initial_bags.text
     assert "Current bag root" not in initial_bags.text
     assert "OR" in initial_bags.text
@@ -37,9 +41,42 @@ def test_bag_pages_scan_and_edit_flow(monkeypatch: pytest.MonkeyPatch, tmp_path:
     bags_response = client.get("/bags")
     assert bags_response.status_code == 200
     assert "web_bag" in bags_response.text
+    assert str(output_root) in bags_response.text
     filtered_response = client.get("/bags?topic=camera%20OR%20missing")
     assert filtered_response.status_code == 200
     assert "web_bag" in filtered_response.text
+
+    merge_calls = []
+
+    def fake_merge(paths: list[Path], destination: Path, output_name: str) -> Path:
+        merge_calls.append((paths, destination, output_name))
+        target = destination / output_name
+        target.mkdir(parents=True)
+        return target
+
+    monkeypatch.setattr("app.routes.bags.merge_bag_directories", fake_merge)
+    merge_response = client.post(
+        "/bags/merge",
+        data={"bag_ids": ["1", "2"], "output_name": "merged_web"},
+        follow_redirects=False,
+    )
+    assert merge_response.status_code == 303
+    assert "merge_message=" in merge_response.headers["location"]
+    assert merge_calls == [
+        (
+            [bag_root / "web_bag", bag_root / "web_bag_2"],
+            output_root,
+            "merged_web",
+        )
+    ]
+
+    invalid_merge = client.post(
+        "/bags/merge",
+        data={"bag_ids": "1"},
+        follow_redirects=False,
+    )
+    assert invalid_merge.status_code == 303
+    assert "merge_error=" in invalid_merge.headers["location"]
 
     detail_response = client.get("/bags/1")
     assert detail_response.status_code == 200
@@ -89,6 +126,7 @@ def test_local_mode_selects_root_and_uses_root_db(
     invalid_file = tmp_path / "not-a-directory"
     invalid_file.write_text("x", encoding="utf-8")
     monkeypatch.delenv("BAG_ROOT", raising=False)
+    monkeypatch.delenv("BAG_OUTPUT_ROOT", raising=False)
     monkeypatch.delenv("DB_PATH", raising=False)
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg-data"))
 
