@@ -55,6 +55,13 @@ def test_bag_pages_scan_and_edit_flow(monkeypatch: pytest.MonkeyPatch, tmp_path:
             "web_bag/metadata.yaml",
             "web_bag/web_0.mcap",
         ]
+        assert archive.read("web_bag/web_0.mcap") == b"abc"
+        assert b"rosbag2_bagfile_information" in archive.read("web_bag/metadata.yaml")
+    from app.routes.bags import _iter_bag_archive
+
+    first_chunk = next(_iter_bag_archive(bag_root / "web_bag"))
+    assert first_chunk.startswith(b"PK\x03\x04")
+    assert b"web_bag/metadata.yaml" in first_chunk
 
     assert client.post("/bags/1/note", data={"note": "route note"}).status_code == 200
     assert client.post("/bags/1/tags/add", data={"tag": "field"}).status_code == 200
