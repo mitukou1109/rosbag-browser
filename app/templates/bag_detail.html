@@ -1,12 +1,13 @@
 {% extends "base.html" %}
 {% block title %}{{ bag.name }} - rosbag Browser{% endblock %}
 {% block content %}
-<section class="page-head">
-  <div>
+<section class="page-head bag-detail-head">
+  <div class="detail-heading">
     <p class="breadcrumb"><a class="button secondary" href="/bags">Back</a></p>
-    <div class="title-row">
+    <div class="title-row detail-title-row">
       <h1>{{ bag.name }}</h1>
       <span class="status status-{{ bag.status }}">{{ bag.status }}</span>
+      <a class="button download-action" href="/bags/{{ bag.id }}/download">Download zip</a>
     </div>
   </div>
 </section>

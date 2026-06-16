@@ -92,11 +92,32 @@ nav {
   gap: 12px;
 }
 
+.bag-detail-head {
+  align-items: stretch;
+}
+
+.detail-heading {
+  align-self: stretch;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+}
+
+.detail-title-row {
+  display: flex;
+  width: 100%;
+}
+
 .title-row {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  min-width: 0;
+}
+
+.download-action {
+  margin-left: auto;
 }
 
 .last-scanned {
@@ -528,6 +549,10 @@ tr:last-child td {
   .page-head {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .page-head.bag-detail-head {
+    align-items: stretch;
   }
 
   .page-actions {

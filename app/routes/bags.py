@@ -3,13 +3,16 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 import sqlite3
+import tempfile
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import urlencode, urlsplit
+from zipfile import ZIP_DEFLATED, ZipFile
 
 from fastapi import APIRouter, Form, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from starlette.background import BackgroundTask
 
 from app.config import (
     Settings,
@@ -145,6 +148,23 @@ def bag_detail(request: Request, bag_id: int) -> HTMLResponse:
     )
 
 
+@router.get("/bags/{bag_id}/download")
+def download_bag(request: Request, bag_id: int) -> FileResponse:
+    settings = request.app.state.settings
+    with _active_db(settings) as (bag_root, conn):
+        bag = get_bag(conn, bag_id, bag_root=bag_root)
+        if bag is None:
+            raise HTTPException(status_code=404, detail="Bag not found")
+        bag_dir = _bag_directory_path(bag, bag_root)
+    archive_path = _create_bag_archive(bag_dir)
+    return FileResponse(
+        archive_path,
+        media_type="application/zip",
+        filename=f"{bag_dir.name}.zip",
+        background=BackgroundTask(_remove_file, archive_path),
+    )
+
+
 @router.post("/bags/{bag_id}/note")
 def save_note(
     request: Request,
@@ -196,6 +216,57 @@ def _clean(value: str | None) -> str | None:
         return None
     value = value.strip()
     return value or None
+
+
+def _bag_directory_path(bag: dict[str, object], bag_root: Path) -> Path:
+    root = bag_root.resolve()
+    relative_path = bag.get("root_relative_path")
+    if relative_path:
+        bag_dir = (root / str(relative_path)).resolve()
+    else:
+        path_value = bag.get("path")
+        if not path_value:
+            raise HTTPException(status_code=404, detail="Bag files not found")
+        bag_dir = Path(str(path_value)).resolve()
+    try:
+        bag_dir.relative_to(root)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Bag files not found") from exc
+    if not bag_dir.is_dir():
+        raise HTTPException(status_code=404, detail="Bag files not found")
+    return bag_dir
+
+
+def _create_bag_archive(bag_dir: Path) -> Path:
+    temp_file = tempfile.NamedTemporaryFile(
+        prefix="rosbag-browser-", suffix=".zip", delete=False
+    )
+    archive_path = Path(temp_file.name)
+    temp_file.close()
+    root = bag_dir.resolve()
+    try:
+        with ZipFile(archive_path, "w", compression=ZIP_DEFLATED, allowZip64=True) as zipf:
+            for path in sorted(bag_dir.rglob("*")):
+                if not path.is_file():
+                    continue
+                resolved_path = path.resolve()
+                try:
+                    resolved_path.relative_to(root)
+                except ValueError:
+                    continue
+                archive_name = Path(bag_dir.name) / path.relative_to(bag_dir)
+                zipf.write(path, archive_name.as_posix())
+    except Exception:
+        _remove_file(archive_path)
+        raise
+    return archive_path
+
+
+def _remove_file(path: Path) -> None:
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
 
 
 @contextmanager

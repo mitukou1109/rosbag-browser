@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import io
 import importlib
 from pathlib import Path
+from zipfile import ZipFile
 
 import pytest
 
@@ -41,7 +43,18 @@ def test_bag_pages_scan_and_edit_flow(monkeypatch: pytest.MonkeyPatch, tmp_path:
 
     detail_response = client.get("/bags/1")
     assert detail_response.status_code == 200
+    assert "Download zip" in detail_response.text
     assert "/camera/front" in detail_response.text
+
+    download_response = client.get("/bags/1/download")
+    assert download_response.status_code == 200
+    assert download_response.headers["content-type"] == "application/zip"
+    assert "web_bag.zip" in download_response.headers["content-disposition"]
+    with ZipFile(io.BytesIO(download_response.content)) as archive:
+        assert sorted(archive.namelist()) == [
+            "web_bag/metadata.yaml",
+            "web_bag/web_0.mcap",
+        ]
 
     assert client.post("/bags/1/note", data={"note": "route note"}).status_code == 200
     assert client.post("/bags/1/tags/add", data={"tag": "field"}).status_code == 200
