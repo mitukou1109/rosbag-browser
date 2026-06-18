@@ -148,6 +148,38 @@ def test_scan_preserves_note_and_tags(tmp_path: Path) -> None:
     assert updated["tag_list"] == ["field", "camera"]
 
 
+def test_scan_skips_unchanged_bag_index(
+    monkeypatch, tmp_path: Path
+) -> None:
+    bag_root = tmp_path / "bags"
+    db_path = tmp_path / "data.sqlite3"
+    bag_dir = _make_bag(bag_root, "fast_bag")
+
+    with connect(db_path) as conn:
+        init_db(conn)
+        result = scan_bags(conn, bag_root)
+        assert result.scanned == 1
+        bag = search_bags(conn)[0]
+
+        def fail_parse(*args, **kwargs):
+            raise AssertionError("unchanged bag should not be parsed")
+
+        monkeypatch.setattr("app.indexer.parse_bag_directory", fail_parse)
+        result = scan_bags(conn, bag_root)
+        assert result.scanned == 1
+        assert result.valid == 1
+        assert get_bag(conn, bag["id"])["size_bytes"] == 6
+
+        monkeypatch.undo()
+        (bag_dir / "bag_0.mcap").write_bytes(b"abcdefghi")
+        result = scan_bags(conn, bag_root)
+        updated = get_bag(conn, bag["id"])
+
+    assert result.scanned == 1
+    assert updated is not None
+    assert updated["size_bytes"] == 9
+
+
 def test_scan_removes_deleted_bag_from_index(tmp_path: Path) -> None:
     bag_root = tmp_path / "bags"
     external_root = tmp_path / "external-bags"

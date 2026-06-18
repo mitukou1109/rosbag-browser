@@ -57,9 +57,9 @@ def upsert_bag(conn: sqlite3.Connection, bag: BagRecord) -> int:
             INSERT INTO bags (
               path, root_relative_path, name, storage_identifier, starting_time,
               duration_ns, message_count, size_bytes, status, error_message,
-              indexed_at, modified_at
+              index_signature, indexed_at, modified_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 bag.path,
@@ -72,6 +72,7 @@ def upsert_bag(conn: sqlite3.Connection, bag: BagRecord) -> int:
                 bag.size_bytes,
                 bag.status,
                 bag.error_message,
+                bag.index_signature,
                 now,
                 now,
             ),
@@ -91,6 +92,7 @@ def upsert_bag(conn: sqlite3.Connection, bag: BagRecord) -> int:
               size_bytes = ?,
               status = ?,
               error_message = ?,
+              index_signature = ?,
               indexed_at = ?
             WHERE id = ?
             """,
@@ -105,6 +107,7 @@ def upsert_bag(conn: sqlite3.Connection, bag: BagRecord) -> int:
                 bag.size_bytes,
                 bag.status,
                 bag.error_message,
+                bag.index_signature,
                 now,
                 existing["id"],
             ),
@@ -131,6 +134,46 @@ def upsert_bag(conn: sqlite3.Connection, bag: BagRecord) -> int:
         ],
     )
     return bag_id
+
+
+def find_indexed_bag(
+    conn: sqlite3.Connection,
+    *,
+    path: str,
+    root_relative_path: str | None,
+) -> sqlite3.Row | None:
+    if root_relative_path:
+        row = conn.execute(
+            """
+            SELECT id, path, root_relative_path, status, index_signature
+            FROM bags
+            WHERE root_relative_path = ?
+            """,
+            (root_relative_path,),
+        ).fetchone()
+        if row is not None:
+            return row
+    return conn.execute(
+        """
+        SELECT id, path, root_relative_path, status, index_signature
+        FROM bags
+        WHERE path = ?
+        """,
+        (path,),
+    ).fetchone()
+
+
+def update_bag_location(
+    conn: sqlite3.Connection,
+    bag_id: int,
+    *,
+    path: str,
+    root_relative_path: str | None,
+) -> None:
+    conn.execute(
+        "UPDATE bags SET path = ?, root_relative_path = ? WHERE id = ?",
+        (path, root_relative_path, bag_id),
+    )
 
 
 def _find_existing_bag_row(
@@ -172,6 +215,7 @@ def bag_record_for_root(bag: BagRecord, bag_root: Path) -> BagRecord:
         size_bytes=bag.size_bytes,
         status=bag.status,
         error_message=bag.error_message,
+        index_signature=bag.index_signature,
         topics=bag.topics,
     )
 
@@ -512,6 +556,13 @@ def list_tags(conn: sqlite3.Connection, *, bag_root: Path | None = None) -> list
 
 
 def get_last_scanned_at(conn: sqlite3.Connection, *, bag_root: Path | None = None) -> str:
+    if bag_root is not None:
+        row = conn.execute(
+            "SELECT last_scanned_at FROM scan_state WHERE bag_root = ?",
+            (str(bag_root.resolve()),),
+        ).fetchone()
+        if row is not None:
+            return format_datetime_text(row["last_scanned_at"])
     if bag_root is None:
         row = conn.execute("SELECT MAX(indexed_at) AS last_scanned_at FROM bags").fetchone()
         if row is None:
@@ -528,6 +579,17 @@ def get_last_scanned_at(conn: sqlite3.Connection, *, bag_root: Path | None = Non
     if not values:
         return ""
     return format_datetime_text(max(values))
+
+
+def update_last_scanned_at(conn: sqlite3.Connection, bag_root: Path) -> None:
+    conn.execute(
+        """
+        INSERT INTO scan_state (bag_root, last_scanned_at)
+        VALUES (?, ?)
+        ON CONFLICT(bag_root) DO UPDATE SET last_scanned_at = excluded.last_scanned_at
+        """,
+        (str(bag_root.resolve()), utc_now()),
+    )
 
 
 def _bag_row_to_dict(row: sqlite3.Row, *, bag_root: Path | None = None) -> dict[str, Any]:
