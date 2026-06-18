@@ -15,6 +15,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 from app.config import (
+    LocalRootState,
     Settings,
     current_bag_root,
     db_path_for_bag_root,
@@ -85,14 +86,12 @@ def list_bags(
             },
             "tags": tags,
             "last_scanned_at": last_scanned_at,
-            "root_selector": {
-                "enabled": not settings.is_fixed_root,
-                "current": str(bag_root) if bag_root is not None else "",
-                "recent": [str(path) for path in local_state.recent_bag_roots]
-                if local_state is not None
-                else [],
-                "error": root_error or "",
-            },
+            "root_selector": _root_selector_context(
+                settings=settings,
+                bag_root=bag_root,
+                root_error=root_error,
+                local_state=local_state,
+            ),
         },
     )
 
@@ -139,9 +138,7 @@ def scan_bags_from_list(request: Request) -> RedirectResponse:
 def bag_detail(request: Request, bag_id: int) -> HTMLResponse:
     settings = request.app.state.settings
     with _active_db(settings) as (bag_root, conn):
-        bag = get_bag(conn, bag_id, bag_root=bag_root)
-        if bag is None:
-            raise HTTPException(status_code=404, detail="Bag not found")
+        bag = _require_bag(conn, bag_id, bag_root)
         topics = get_topics(conn, bag_id)
         tags = list_tags(conn, bag_root=bag_root)
     return templates.TemplateResponse(
@@ -155,9 +152,7 @@ def bag_detail(request: Request, bag_id: int) -> HTMLResponse:
 def download_bag(request: Request, bag_id: int) -> StreamingResponse:
     settings = request.app.state.settings
     with _active_db(settings) as (bag_root, conn):
-        bag = get_bag(conn, bag_id, bag_root=bag_root)
-        if bag is None:
-            raise HTTPException(status_code=404, detail="Bag not found")
+        bag = _require_bag(conn, bag_id, bag_root)
         bag_dir = _bag_directory_path(bag, bag_root)
     return StreamingResponse(
         _iter_bag_archive(bag_dir),
@@ -174,8 +169,7 @@ def save_note(
 ) -> RedirectResponse:
     settings = request.app.state.settings
     with _active_db(settings) as (bag_root, conn):
-        if get_bag(conn, bag_id, bag_root=bag_root) is None:
-            raise HTTPException(status_code=404, detail="Bag not found")
+        _require_bag(conn, bag_id, bag_root)
         update_note(conn, bag_id, note)
         conn.commit()
     return RedirectResponse(url=f"/bags/{bag_id}", status_code=303)
@@ -189,8 +183,7 @@ def add_bag_tag(
 ) -> RedirectResponse:
     settings = request.app.state.settings
     with _active_db(settings) as (bag_root, conn):
-        if get_bag(conn, bag_id, bag_root=bag_root) is None:
-            raise HTTPException(status_code=404, detail="Bag not found")
+        _require_bag(conn, bag_id, bag_root)
         if tag.strip():
             add_tag(conn, bag_id, tag)
             conn.commit()
@@ -205,8 +198,7 @@ def remove_bag_tags(
 ) -> RedirectResponse:
     settings = request.app.state.settings
     with _active_db(settings) as (bag_root, conn):
-        if get_bag(conn, bag_id, bag_root=bag_root) is None:
-            raise HTTPException(status_code=404, detail="Bag not found")
+        _require_bag(conn, bag_id, bag_root)
         remove_tags(conn, bag_id, tags_to_remove or [])
         conn.commit()
     return RedirectResponse(url=f"/bags/{bag_id}", status_code=303)
@@ -217,6 +209,35 @@ def _clean(value: str | None) -> str | None:
         return None
     value = value.strip()
     return value or None
+
+
+def _root_selector_context(
+    *,
+    settings: Settings,
+    bag_root: Path | None,
+    root_error: str | None,
+    local_state: LocalRootState | None,
+) -> dict[str, object]:
+    recent = []
+    if local_state is not None:
+        recent = [str(path) for path in local_state.recent_bag_roots]
+    return {
+        "enabled": not settings.is_fixed_root,
+        "current": str(bag_root) if bag_root is not None else "",
+        "recent": recent,
+        "error": root_error or "",
+    }
+
+
+def _require_bag(
+    conn: sqlite3.Connection,
+    bag_id: int,
+    bag_root: Path,
+) -> dict[str, object]:
+    bag = get_bag(conn, bag_id, bag_root=bag_root)
+    if bag is None:
+        raise HTTPException(status_code=404, detail="Bag not found")
+    return bag
 
 
 def _bag_directory_path(bag: dict[str, object], bag_root: Path) -> Path:

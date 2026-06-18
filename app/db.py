@@ -50,17 +50,11 @@ def init_db(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_topics_bag_id ON topics(bag_id);
         """
     )
-    _migrate_db(conn)
+    _create_indexes(conn)
     conn.commit()
 
 
-def _migrate_db(conn: sqlite3.Connection) -> None:
-    columns = {
-        str(row["name"])
-        for row in conn.execute("PRAGMA table_info(bags)").fetchall()
-    }
-    if "root_relative_path" not in columns:
-        conn.execute("ALTER TABLE bags ADD COLUMN root_relative_path TEXT")
+def _create_indexes(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
         CREATE UNIQUE INDEX IF NOT EXISTS idx_bags_root_relative_path

@@ -229,7 +229,6 @@ def search_bags(
 ) -> list[dict[str, Any]]:
     clauses: list[str] = []
     params: list[Any] = []
-    joins: list[str] = []
 
     topic_clause, topic_params = search_pattern_clause(topic, topic_predicate)
     if topic_clause:
@@ -257,7 +256,6 @@ def search_bags(
 
     sql = [
         "SELECT DISTINCT bags.* FROM bags",
-        *joins,
     ]
     if clauses:
         sql.append("WHERE " + " AND ".join(clauses))
@@ -536,7 +534,6 @@ def _bag_row_to_dict(row: sqlite3.Row, *, bag_root: Path | None = None) -> dict[
     item = dict(row)
     item["status"] = "valid" if item.get("status") == "valid" else "broken"
     item["tag_list"] = tags_from_text(item.get("tags"))
-    item["tags_csv"] = ", ".join(item["tag_list"])
     item["duration_text"] = format_duration(item.get("duration_ns"))
     item["size_text"] = format_bytes(int(item.get("size_bytes") or 0))
     item["starting_time_text"] = format_datetime_text(item.get("starting_time"))

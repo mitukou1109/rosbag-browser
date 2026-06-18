@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "A lightweight ROS 2 bag browser for bag archives."
 requires-python = ">=3.10"
 dependencies = [
-  "fastapi>=0.115,<1.0",
+  "fastapi>=0.115,<0.136",
   "jinja2>=3.1,<4.0",
   "python-multipart>=0.0.9,<1.0",
   "pyyaml>=6.0,<7.0",
