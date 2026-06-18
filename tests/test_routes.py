@@ -30,7 +30,15 @@ def test_bag_pages_scan_and_edit_flow(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert "Current bag root" not in initial_bags.text
     assert "OR" in initial_bags.text
     assert "NOT" in initial_bags.text
+    assert "Excluded Directory Path" in initial_bags.text
     assert client.post("/settings/bag-root", data={"bag_root": str(tmp_path)}).status_code == 403
+    invalid_exclusion = client.post(
+        "/bags/search",
+        data={"excluded_directory_paths": "../outside"},
+        follow_redirects=True,
+    )
+    assert invalid_exclusion.status_code == 200
+    assert "cannot contain" in invalid_exclusion.text
     scan_response = client.post("/bags/scan", follow_redirects=False)
     assert scan_response.status_code == 303
 
@@ -77,6 +85,46 @@ def test_bag_pages_scan_and_edit_flow(monkeypatch: pytest.MonkeyPatch, tmp_path:
     )
     removed = client.get("/bags/1")
     assert "route" in removed.text
+
+
+def test_excluded_directory_settings_are_applied_to_scans(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    bag_root = tmp_path / "bags"
+    data_dir = tmp_path / "data"
+    db_path = data_dir / "app.sqlite3"
+    _make_bag(bag_root, "visible_bag")
+    _make_bag(bag_root / "archive", "hidden_bag")
+    monkeypatch.setenv("BAG_ROOT", str(bag_root))
+    monkeypatch.setenv("DB_PATH", str(db_path))
+
+    main = importlib.import_module("app.main")
+    client = TestClient(main.create_app())
+
+    add_response = client.post(
+        "/bags/search",
+        data={"excluded_directory_paths": 'archive/ "quoted dir"'},
+        follow_redirects=False,
+    )
+    assert add_response.status_code == 303
+    settings_response = client.get("/bags")
+    assert "archive" in settings_response.text
+    assert "quoted dir" in settings_response.text
+
+    assert client.post("/bags/scan", follow_redirects=False).status_code == 303
+    bags_response = client.get("/bags")
+    assert "visible_bag" in bags_response.text
+    assert "hidden_bag" not in bags_response.text
+
+    remove_response = client.post(
+        "/bags/search",
+        data={"excluded_directory_paths": ""},
+        follow_redirects=False,
+    )
+    assert remove_response.status_code == 303
+    assert client.post("/bags/scan", follow_redirects=False).status_code == 303
+    refreshed_response = client.get("/bags")
+    assert "hidden_bag" in refreshed_response.text
 
 
 def test_local_mode_selects_root_and_uses_root_db(

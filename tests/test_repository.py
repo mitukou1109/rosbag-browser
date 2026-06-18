@@ -5,11 +5,17 @@ from pathlib import Path
 from app.db import connect, init_db
 from app.models import BagRecord, TopicRecord
 from app.repository import (
+    add_excluded_directory,
+    excluded_directory_paths_to_text,
     add_tag,
     get_bag,
+    list_excluded_directories,
+    parse_excluded_directory_paths,
     list_tags,
+    remove_excluded_directory,
     remove_tags,
     search_bags,
+    set_excluded_directories,
     update_note,
     update_tags,
     upsert_bag,
@@ -201,3 +207,42 @@ def test_upsert_uses_root_relative_path_as_stable_identity(tmp_path: Path) -> No
     assert updated["path_display"] == "run_a"
     assert updated["note"] == "keep me"
     assert updated["tag_list"] == ["portable"]
+
+
+def test_excluded_directories_are_normalized_and_stored(tmp_path: Path) -> None:
+    db_path = tmp_path / "data.sqlite3"
+    with connect(db_path) as conn:
+        init_db(conn)
+        assert add_excluded_directory(conn, " archive/old-runs/ ") == "archive/old-runs"
+        add_excluded_directory(conn, "archive/old-runs")
+        add_excluded_directory(conn, "tmp")
+        conn.commit()
+
+        assert list_excluded_directories(conn) == ["archive/old-runs", "tmp"]
+
+        remove_excluded_directory(conn, "archive/old-runs/")
+        conn.commit()
+
+        assert list_excluded_directories(conn) == ["tmp"]
+
+
+def test_excluded_directory_paths_text_supports_spaces_and_quotes(tmp_path: Path) -> None:
+    db_path = tmp_path / "data.sqlite3"
+    with connect(db_path) as conn:
+        init_db(conn)
+        assert parse_excluded_directory_paths(
+            'archive "runs with spaces" archive'
+        ) == ["archive", "runs with spaces"]
+        assert excluded_directory_paths_to_text(
+            ["archive", "runs with spaces"]
+        ) == 'archive "runs with spaces"'
+
+        set_excluded_directories(conn, 'archive "runs with spaces"')
+        conn.commit()
+
+        assert list_excluded_directories(conn) == ["archive", "runs with spaces"]
+
+        set_excluded_directories(conn, "")
+        conn.commit()
+
+        assert list_excluded_directories(conn) == []

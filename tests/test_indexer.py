@@ -5,7 +5,13 @@ from pathlib import Path
 
 from app.db import connect, init_db
 from app.indexer import parse_bag_directory, scan_bags
-from app.repository import get_bag, search_bags, update_note, update_tags
+from app.repository import (
+    add_excluded_directory,
+    get_bag,
+    search_bags,
+    update_note,
+    update_tags,
+)
 
 
 def test_parse_valid_mcap_metadata(tmp_path: Path) -> None:
@@ -207,6 +213,32 @@ def test_scan_removes_deleted_bag_from_index(tmp_path: Path) -> None:
 
     assert result.scanned == 1
     assert [bag["name"] for bag in bags] == ["external_bag", "remaining_bag"]
+
+
+def test_scan_skips_excluded_directory_and_prunes_existing_index(tmp_path: Path) -> None:
+    bag_root = tmp_path / "bags"
+    db_path = tmp_path / "data.sqlite3"
+    _make_bag(bag_root, "included_bag")
+    _make_bag(bag_root / "archive", "old_bag")
+
+    with connect(db_path) as conn:
+        init_db(conn)
+        result = scan_bags(conn, bag_root)
+        assert result.scanned == 2
+        assert [bag["name"] for bag in search_bags(conn)] == [
+            "included_bag",
+            "old_bag",
+        ]
+
+        add_excluded_directory(conn, "archive")
+        assert [bag["name"] for bag in search_bags(conn, bag_root=bag_root)] == [
+            "included_bag"
+        ]
+        result = scan_bags(conn, bag_root)
+        bags = search_bags(conn)
+
+    assert result.scanned == 1
+    assert [bag["name"] for bag in bags] == ["included_bag"]
 
 
 def test_scan_preserves_metadata_after_root_path_changes(tmp_path: Path) -> None:

@@ -39,18 +39,30 @@
 </section>
 {% endif %}
 
-<form class="filters" method="get" action="/bags">
+<section class="filters">
+  <form id="bag-search-form" method="post" action="/bags/search" hidden></form>
   <label class="field-wide">
     Topic
-    <input name="topic" value="{{ filters.topic }}" placeholder="e.g. /front_camera/image_raw/compressed /front_lidar/points">
+    <input form="bag-search-form" name="topic" value="{{ filters.topic }}" placeholder="e.g. /front_camera/image_raw/compressed /front_lidar/points">
   </label>
   <label class="field-wide">
     Keyword (Name, Note)
-    <input name="q" value="{{ filters.q }}" placeholder="e.g. calibration AND NOT (test OR demo)">
+    <input form="bag-search-form" name="q" value="{{ filters.q }}" placeholder="e.g. calibration AND NOT (test OR demo)">
   </label>
+  {% if root_selector.current %}
+  <div class="field-wide exclude-search-control">
+    {% if exclude_error %}
+    <div class="alert">{{ exclude_error }}</div>
+    {% endif %}
+    <label>
+      Excluded Directory Path
+      <input form="bag-search-form" name="excluded_directory_paths" value="{{ excluded_directory_paths }}" placeholder='e.g. archive/old-runs "runs with spaces"'>
+    </label>
+  </div>
+  {% endif %}
   <label>
     Tags
-    <select name="tag">
+    <select form="bag-search-form" name="tag">
       <option value="">any</option>
       {% for item in tags %}
       <option value="{{ item }}" {% if filters.tag == item %}selected{% endif %}>{{ item }}</option>
@@ -59,17 +71,17 @@
   </label>
   <label>
     Start from
-    <input type="datetime-local" name="start_from" value="{{ filters.start_from }}">
+    <input form="bag-search-form" type="datetime-local" name="start_from" value="{{ filters.start_from }}">
   </label>
   <label>
     Start to
-    <input type="datetime-local" name="start_to" value="{{ filters.start_to }}">
+    <input form="bag-search-form" type="datetime-local" name="start_to" value="{{ filters.start_to }}">
   </label>
   <div class="form-actions">
-    <button type="submit">Search</button>
+    <button form="bag-search-form" type="submit">Search</button>
     <a class="button secondary" href="/bags">Clear</a>
   </div>
-</form>
+</section>
 
 <div class="table-wrap">
   <table class="bags-table">

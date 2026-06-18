@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import sqlite3
 from collections.abc import Iterable
 from datetime import datetime, time, timedelta, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -261,6 +262,115 @@ def delete_stale_bag_indexes(
     return deleted
 
 
+def normalize_excluded_directory_path(path_value: str) -> str:
+    text = path_value.strip()
+    if not text:
+        raise ValueError("Excluded directory path is required")
+    path = PurePosixPath(text)
+    if path.is_absolute():
+        raise ValueError("Excluded directory path must be relative to the bag root")
+    parts: list[str] = []
+    for part in path.parts:
+        if part in {"", "."}:
+            continue
+        if part == "..":
+            raise ValueError("Excluded directory path cannot contain '..'")
+        parts.append(part)
+    if not parts:
+        raise ValueError("Cannot exclude the bag root")
+    return PurePosixPath(*parts).as_posix()
+
+
+def parse_excluded_directory_paths(path_values: str) -> list[str]:
+    if not path_values.strip():
+        return []
+    try:
+        raw_paths = shlex.split(path_values)
+    except ValueError as exc:
+        raise ValueError(f"Invalid excluded directory paths: {exc}") from exc
+    paths: list[str] = []
+    seen: set[str] = set()
+    for raw_path in raw_paths:
+        path = normalize_excluded_directory_path(raw_path)
+        if path in seen:
+            continue
+        seen.add(path)
+        paths.append(path)
+    return paths
+
+
+def excluded_directory_paths_to_text(paths: Iterable[str]) -> str:
+    values: list[str] = []
+    for path in paths:
+        if any(char.isspace() for char in path) or '"' in path:
+            values.append('"' + path.replace("\\", "\\\\").replace('"', '\\"') + '"')
+        else:
+            values.append(path)
+    return " ".join(values)
+
+
+def set_excluded_directories(conn: sqlite3.Connection, path_values: str) -> list[str]:
+    paths = parse_excluded_directory_paths(path_values)
+    conn.execute("DELETE FROM excluded_directories")
+    conn.executemany(
+        """
+        INSERT INTO excluded_directories (path, created_at)
+        VALUES (?, ?)
+        """,
+        [(path, utc_now()) for path in paths],
+    )
+    return paths
+
+
+def add_excluded_directory(conn: sqlite3.Connection, path_value: str) -> str:
+    normalized_path = normalize_excluded_directory_path(path_value)
+    conn.execute(
+        """
+        INSERT INTO excluded_directories (path, created_at)
+        VALUES (?, ?)
+        ON CONFLICT(path) DO NOTHING
+        """,
+        (normalized_path, utc_now()),
+    )
+    return normalized_path
+
+
+def remove_excluded_directory(conn: sqlite3.Connection, path_value: str) -> None:
+    normalized_path = normalize_excluded_directory_path(path_value)
+    conn.execute("DELETE FROM excluded_directories WHERE path = ?", (normalized_path,))
+
+
+def list_excluded_directories(conn: sqlite3.Connection) -> list[str]:
+    rows = conn.execute(
+        "SELECT path FROM excluded_directories ORDER BY path"
+    ).fetchall()
+    return [str(row["path"]) for row in rows]
+
+
+def is_excluded_relative_path(
+    relative_path: str | None,
+    excluded_relative_paths: set[str],
+) -> bool:
+    if not relative_path:
+        return False
+    return any(
+        relative_path == excluded_path
+        or relative_path.startswith(f"{excluded_path}/")
+        for excluded_path in excluded_relative_paths
+    )
+
+
+def bag_is_excluded(
+    row_or_item: sqlite3.Row | dict[str, Any],
+    bag_root: Path,
+    excluded_relative_paths: set[str],
+) -> bool:
+    row_relative_path = row_or_item["root_relative_path"]
+    if not row_relative_path:
+        row_relative_path = root_relative_path(row_or_item["path"], bag_root)
+    return is_excluded_relative_path(row_relative_path, excluded_relative_paths)
+
+
 def search_bags(
     conn: sqlite3.Connection,
     *,
@@ -306,7 +416,13 @@ def search_bags(
     sql.append("ORDER BY bags.starting_time DESC, bags.name ASC")
     rows = conn.execute(" ".join(sql), params).fetchall()
     if bag_root is not None:
-        rows = [row for row in rows if bag_belongs_to_root(row, bag_root)]
+        excluded_relative_paths = set(list_excluded_directories(conn))
+        rows = [
+            row
+            for row in rows
+            if bag_belongs_to_root(row, bag_root)
+            and not bag_is_excluded(row, bag_root, excluded_relative_paths)
+        ]
     items = [_bag_row_to_dict(row, bag_root=bag_root) for row in rows]
     if tag:
         items = [item for item in items if tag in item["tag_list"]]
@@ -486,6 +602,12 @@ def get_bag(
         return None
     if bag_root is not None and not bag_belongs_to_root(row, bag_root):
         return None
+    if bag_root is not None and bag_is_excluded(
+        row,
+        bag_root,
+        set(list_excluded_directories(conn)),
+    ):
+        return None
     return _bag_row_to_dict(row, bag_root=bag_root)
 
 
@@ -548,8 +670,17 @@ def remove_tags(conn: sqlite3.Connection, bag_id: int, tags_to_remove: Iterable[
 def list_tags(conn: sqlite3.Connection, *, bag_root: Path | None = None) -> list[str]:
     tags: set[str] = set()
     rows = conn.execute("SELECT path, root_relative_path, tags FROM bags ORDER BY name").fetchall()
+    excluded_relative_paths = (
+        set(list_excluded_directories(conn)) if bag_root is not None else set()
+    )
     for row in rows:
         if bag_root is not None and not bag_belongs_to_root(row, bag_root):
+            continue
+        if bag_root is not None and bag_is_excluded(
+            row,
+            bag_root,
+            excluded_relative_paths,
+        ):
             continue
         tags.update(tags_from_text(row["tags"]))
     return sorted(tags)

@@ -112,6 +112,11 @@ h2 {
   grid-template-columns: minmax(260px, 2fr) minmax(180px, 1fr) auto;
 }
 
+.exclude-search-control {
+  display: grid;
+  gap: 10px;
+}
+
 .filters {
   align-items: end;
   display: grid;
