@@ -50,6 +50,11 @@ def init_db(conn: sqlite3.Connection) -> None:
           last_scanned_at TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS excluded_directories (
+          path TEXT PRIMARY KEY,
+          created_at TEXT NOT NULL
+        );
+
         CREATE INDEX IF NOT EXISTS idx_bags_status ON bags(status);
         CREATE INDEX IF NOT EXISTS idx_topics_name ON topics(name);
         CREATE INDEX IF NOT EXISTS idx_topics_type ON topics(type);

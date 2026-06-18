@@ -14,6 +14,8 @@ from app.repository import (
     bag_record_for_root,
     delete_stale_bag_indexes,
     find_indexed_bag,
+    is_excluded_relative_path,
+    list_excluded_directories,
     root_relative_path,
     update_bag_location,
     update_last_scanned_at,
@@ -33,6 +35,7 @@ def scan_bags(
     start = time.monotonic()
     result = ScanResult()
     current_paths: set[str] = set()
+    excluded_relative_paths = set(list_excluded_directories(conn))
     if not bag_root.exists():
         delete_stale_bag_indexes(
             conn,
@@ -44,7 +47,18 @@ def scan_bags(
         return ScanResult(duration_seconds=time.monotonic() - start)
 
     for dirpath, dirnames, filenames in os.walk(bag_root):
-        dirnames[:] = [dirname for dirname in dirnames if dirname != ".rosbag-browser"]
+        current_dir = Path(dirpath)
+        dirnames[:] = [
+            dirname
+            for dirname in dirnames
+            if dirname != ".rosbag-browser"
+            and not _is_excluded_child_directory(
+                current_dir,
+                dirname,
+                bag_root,
+                excluded_relative_paths,
+            )
+        ]
         if not _is_bag_candidate(Path(dirpath), filenames):
             continue
         bag_dir = Path(dirpath)
@@ -214,6 +228,18 @@ def _is_bag_candidate(directory: Path, filenames: list[str]) -> bool:
     if "metadata.yaml" in filenames:
         return True
     return any(_looks_like_rosbag_file(directory, filename) for filename in filenames)
+
+
+def _is_excluded_child_directory(
+    current_dir: Path,
+    dirname: str,
+    bag_root: Path,
+    excluded_relative_paths: set[str],
+) -> bool:
+    if not excluded_relative_paths:
+        return False
+    relative_path = root_relative_path(current_dir / dirname, bag_root)
+    return is_excluded_relative_path(relative_path, excluded_relative_paths)
 
 
 def _looks_like_rosbag_file(directory: Path, filename: str) -> bool:

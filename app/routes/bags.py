@@ -25,13 +25,18 @@ from app.config import (
 from app.db import connect, init_db
 from app.indexer import scan_bags
 from app.repository import (
+    add_excluded_directory,
     add_tag,
+    excluded_directory_paths_to_text,
     get_bag,
     get_last_scanned_at,
     get_topics,
+    list_excluded_directories,
     list_tags,
+    remove_excluded_directory,
     remove_tags,
     search_bags,
+    set_excluded_directories,
     update_note,
 )
 
@@ -51,11 +56,13 @@ def list_bags(
     start_from: Annotated[str | None, Query()] = None,
     start_to: Annotated[str | None, Query()] = None,
     root_error: Annotated[str | None, Query()] = None,
+    exclude_error: Annotated[str | None, Query()] = None,
 ) -> HTMLResponse:
     settings = request.app.state.settings
     bag_root = current_bag_root(settings)
     bags = []
     tags = []
+    excluded_directories = []
     last_scanned_at = ""
     if bag_root is not None:
         with _active_db(settings) as (active_root, conn):
@@ -69,6 +76,7 @@ def list_bags(
                 bag_root=active_root,
             )
             tags = list_tags(conn, bag_root=active_root)
+            excluded_directories = list_excluded_directories(conn)
             last_scanned_at = get_last_scanned_at(conn, bag_root=active_root)
     local_state = load_local_root_state(settings) if not settings.is_fixed_root else None
     return templates.TemplateResponse(
@@ -85,6 +93,11 @@ def list_bags(
                 "start_to": start_to or "",
             },
             "tags": tags,
+            "excluded_directories": excluded_directories,
+            "excluded_directory_paths": excluded_directory_paths_to_text(
+                excluded_directories
+            ),
+            "exclude_error": exclude_error or "",
             "last_scanned_at": last_scanned_at,
             "root_selector": _root_selector_context(
                 settings=settings,
@@ -116,6 +129,73 @@ def select_bag_root(
     except (ValueError, OSError, sqlite3.Error) as exc:
         query = urlencode({"root_error": str(exc)})
         return RedirectResponse(url=f"/bags?{query}", status_code=303)
+    return RedirectResponse(url="/bags", status_code=303)
+
+
+@router.post("/bags/search")
+def search_bags_from_form(
+    request: Request,
+    topic: Annotated[str, Form()] = "",
+    q: Annotated[str, Form()] = "",
+    tag: Annotated[str, Form()] = "",
+    start_from: Annotated[str, Form()] = "",
+    start_to: Annotated[str, Form()] = "",
+    excluded_directory_paths: Annotated[str, Form()] = "",
+) -> RedirectResponse:
+    settings = request.app.state.settings
+    query = _search_query(
+        topic=topic,
+        q=q,
+        tag=tag,
+        start_from=start_from,
+        start_to=start_to,
+    )
+    if current_bag_root(settings) is not None:
+        with _active_db(settings) as (_bag_root, conn):
+            try:
+                set_excluded_directories(conn, excluded_directory_paths)
+            except ValueError as exc:
+                query["exclude_error"] = str(exc)
+                return RedirectResponse(url=f"/bags?{urlencode(query)}", status_code=303)
+            conn.commit()
+    return RedirectResponse(url=f"/bags?{urlencode(query)}", status_code=303)
+
+
+@router.post("/settings/excluded-directories")
+def create_excluded_directory(
+    request: Request,
+    path: Annotated[str, Form()] = "",
+) -> RedirectResponse:
+    settings = request.app.state.settings
+    if current_bag_root(settings) is None:
+        query = urlencode({"root_error": "Select a bag root before editing exclusions"})
+        return RedirectResponse(url=f"/bags?{query}", status_code=303)
+    with _active_db(settings) as (_bag_root, conn):
+        try:
+            add_excluded_directory(conn, path)
+        except ValueError as exc:
+            query = urlencode({"exclude_error": str(exc)})
+            return RedirectResponse(url=f"/bags?{query}", status_code=303)
+        conn.commit()
+    return RedirectResponse(url="/bags", status_code=303)
+
+
+@router.post("/settings/excluded-directories/remove")
+def delete_excluded_directory(
+    request: Request,
+    path: Annotated[str, Form()] = "",
+) -> RedirectResponse:
+    settings = request.app.state.settings
+    if current_bag_root(settings) is None:
+        query = urlencode({"root_error": "Select a bag root before editing exclusions"})
+        return RedirectResponse(url=f"/bags?{query}", status_code=303)
+    with _active_db(settings) as (_bag_root, conn):
+        try:
+            remove_excluded_directory(conn, path)
+        except ValueError as exc:
+            query = urlencode({"exclude_error": str(exc)})
+            return RedirectResponse(url=f"/bags?{query}", status_code=303)
+        conn.commit()
     return RedirectResponse(url="/bags", status_code=303)
 
 
@@ -209,6 +289,28 @@ def _clean(value: str | None) -> str | None:
         return None
     value = value.strip()
     return value or None
+
+
+def _search_query(
+    *,
+    topic: str,
+    q: str,
+    tag: str,
+    start_from: str,
+    start_to: str,
+) -> dict[str, str]:
+    query: dict[str, str] = {}
+    for key, value in {
+        "topic": topic,
+        "q": q,
+        "tag": tag,
+        "start_from": start_from,
+        "start_to": start_to,
+    }.items():
+        cleaned = value.strip()
+        if cleaned:
+            query[key] = cleaned
+    return query
 
 
 def _root_selector_context(
