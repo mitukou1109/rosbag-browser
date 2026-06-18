@@ -1,15 +1,13 @@
 {% extends "base.html" %}
 {% block title %}{{ bag.name }} - rosbag Browser{% endblock %}
 {% block content %}
-<section class="page-head bag-detail-head">
-  <div class="detail-heading">
-    <p class="breadcrumb"><a class="button secondary" href="/bags">Back</a></p>
-    <div class="title-row detail-title-row">
-      <h1>{{ bag.name }}</h1>
-      <span class="status status-{{ bag.status }}">{{ bag.status }}</span>
-      <a class="button download-action" href="/bags/{{ bag.id }}/download">Download zip</a>
-    </div>
+<section class="page-head">
+  <div class="title-row">
+    <a class="button secondary" href="/bags">Back</a>
+    <h1>{{ bag.name }}</h1>
+    <span class="status status-{{ bag.status }}">{{ bag.status }}</span>
   </div>
+  <a class="button" href="/bags/{{ bag.id }}/download">Download zip</a>
 </section>
 
 <h2>Info</h2>

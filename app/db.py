@@ -28,6 +28,7 @@ def init_db(conn: sqlite3.Connection) -> None:
           size_bytes INTEGER NOT NULL DEFAULT 0,
           status TEXT NOT NULL DEFAULT 'broken',
           error_message TEXT,
+          index_signature TEXT NOT NULL DEFAULT '',
           note TEXT NOT NULL DEFAULT '',
           tags TEXT NOT NULL DEFAULT '[]',
           indexed_at TEXT NOT NULL,
@@ -44,23 +45,22 @@ def init_db(conn: sqlite3.Connection) -> None:
           UNIQUE (bag_id, name, type)
         );
 
+        CREATE TABLE IF NOT EXISTS scan_state (
+          bag_root TEXT PRIMARY KEY,
+          last_scanned_at TEXT NOT NULL
+        );
+
         CREATE INDEX IF NOT EXISTS idx_bags_status ON bags(status);
         CREATE INDEX IF NOT EXISTS idx_topics_name ON topics(name);
         CREATE INDEX IF NOT EXISTS idx_topics_type ON topics(type);
         CREATE INDEX IF NOT EXISTS idx_topics_bag_id ON topics(bag_id);
         """
     )
-    _migrate_db(conn)
+    _create_indexes(conn)
     conn.commit()
 
 
-def _migrate_db(conn: sqlite3.Connection) -> None:
-    columns = {
-        str(row["name"])
-        for row in conn.execute("PRAGMA table_info(bags)").fetchall()
-    }
-    if "root_relative_path" not in columns:
-        conn.execute("ALTER TABLE bags ADD COLUMN root_relative_path TEXT")
+def _create_indexes(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
         CREATE UNIQUE INDEX IF NOT EXISTS idx_bags_root_relative_path

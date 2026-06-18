@@ -30,8 +30,11 @@ def create_app() -> FastAPI:
 
 
 def _init_active_db(db_path: Path) -> None:
-    with connect(db_path) as conn:
+    conn = connect(db_path)
+    try:
         init_db(conn)
+    finally:
+        conn.close()
 
 
 app = create_app()

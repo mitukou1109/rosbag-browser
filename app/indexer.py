@@ -10,7 +10,15 @@ from typing import Any
 import yaml
 
 from app.models import BagRecord, ScanResult, TopicRecord
-from app.repository import bag_record_for_root, delete_stale_bag_indexes, upsert_bag
+from app.repository import (
+    bag_record_for_root,
+    delete_stale_bag_indexes,
+    find_indexed_bag,
+    root_relative_path,
+    update_bag_location,
+    update_last_scanned_at,
+    upsert_bag,
+)
 
 
 BAG_FILE_SUFFIXES = {".mcap", ".db3"}
@@ -41,7 +49,22 @@ def scan_bags(
             continue
         bag_dir = Path(dirpath)
         current_paths.add(str(bag_dir.resolve()))
-        bag = bag_record_for_root(parse_bag_directory(bag_dir), bag_root)
+        relative_path = root_relative_path(bag_dir, bag_root)
+        index_signature = _index_signature(bag_dir, filenames)
+        existing = find_indexed_bag(
+            conn,
+            path=str(bag_dir),
+            root_relative_path=relative_path,
+        )
+        if existing is not None and existing["index_signature"] == index_signature:
+            _refresh_bag_location(conn, existing, bag_dir, relative_path)
+            result = result.increment(str(existing["status"]))
+            continue
+
+        bag = bag_record_for_root(
+            parse_bag_directory(bag_dir, index_signature=index_signature),
+            bag_root,
+        )
         upsert_bag(conn, bag)
         result = result.increment(bag.status)
     delete_stale_bag_indexes(
@@ -50,6 +73,7 @@ def scan_bags(
         current_paths,
         prune_by_relative_paths=prune_by_relative_paths,
     )
+    update_last_scanned_at(conn, bag_root)
     conn.commit()
     return ScanResult(
         scanned=result.scanned,
@@ -59,26 +83,43 @@ def scan_bags(
     )
 
 
-def parse_bag_directory(bag_dir: Path) -> BagRecord:
+def parse_bag_directory(bag_dir: Path, *, index_signature: str = "") -> BagRecord:
     metadata_path = bag_dir / "metadata.yaml"
     if not metadata_path.exists():
-        return _error_bag(bag_dir, "metadata.yaml is missing")
+        return _error_bag(
+            bag_dir,
+            "metadata.yaml is missing",
+            index_signature=index_signature,
+        )
     try:
         with metadata_path.open("r", encoding="utf-8") as handle:
             loaded = yaml.safe_load(handle)
     except OSError as exc:
-        return _error_bag(bag_dir, f"metadata.yaml is unreadable: {exc}")
+        return _error_bag(
+            bag_dir,
+            f"metadata.yaml is unreadable: {exc}",
+            index_signature=index_signature,
+        )
     except yaml.YAMLError as exc:
-        return _error_bag(bag_dir, f"metadata.yaml is invalid YAML: {exc}")
+        return _error_bag(
+            bag_dir,
+            f"metadata.yaml is invalid YAML: {exc}",
+            index_signature=index_signature,
+        )
 
     if not isinstance(loaded, dict):
-        return _error_bag(bag_dir, "metadata.yaml root is not a mapping")
+        return _error_bag(
+            bag_dir,
+            "metadata.yaml root is not a mapping",
+            index_signature=index_signature,
+        )
 
     info = loaded.get("rosbag2_bagfile_information")
     if not isinstance(info, dict):
         return _error_bag(
             bag_dir,
             "rosbag2_bagfile_information is missing or not a mapping",
+            index_signature=index_signature,
         )
 
     topics_result = _parse_topics(info.get("topics_with_message_count"))
@@ -107,17 +148,65 @@ def parse_bag_directory(bag_dir: Path) -> BagRecord:
         size_bytes=size_bytes,
         status=status,
         error_message=error_message,
+        index_signature=index_signature,
         topics=topics,
     )
 
 
-def _error_bag(bag_dir: Path, error_message: str) -> BagRecord:
+def _error_bag(
+    bag_dir: Path,
+    error_message: str,
+    *,
+    index_signature: str = "",
+) -> BagRecord:
     return BagRecord(
         path=str(bag_dir),
         name=bag_dir.name,
         status="broken",
         error_message=error_message,
+        index_signature=index_signature,
         size_bytes=_directory_size(bag_dir),
+    )
+
+
+def _index_signature(bag_dir: Path, filenames: list[str]) -> str:
+    metadata_path = bag_dir / "metadata.yaml"
+    has_metadata = "metadata.yaml" in filenames
+    parts = ["v1"]
+    if has_metadata:
+        parts.append(_file_signature(metadata_path, "metadata.yaml"))
+    for filename in sorted(filenames):
+        path = Path(filename)
+        if path.suffix not in BAG_FILE_SUFFIXES:
+            continue
+        if not has_metadata and not _looks_like_rosbag_file(bag_dir, filename):
+            continue
+        parts.append(_file_signature(bag_dir / filename, filename))
+    return "\n".join(parts)
+
+
+def _file_signature(path: Path, label: str) -> str:
+    try:
+        stat_result = path.stat()
+    except OSError as exc:
+        return f"{label}:error:{exc.__class__.__name__}"
+    return f"{label}:{stat_result.st_size}:{stat_result.st_mtime_ns}"
+
+
+def _refresh_bag_location(
+    conn: sqlite3.Connection,
+    existing: sqlite3.Row,
+    bag_dir: Path,
+    relative_path: str | None,
+) -> None:
+    path = str(bag_dir)
+    if existing["path"] == path and existing["root_relative_path"] == relative_path:
+        return
+    update_bag_location(
+        conn,
+        int(existing["id"]),
+        path=path,
+        root_relative_path=relative_path,
     )
 
 

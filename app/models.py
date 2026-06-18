@@ -23,6 +23,7 @@ class BagRecord:
     size_bytes: int = 0
     status: str = "broken"
     error_message: str | None = None
+    index_signature: str = ""
     topics: list[TopicRecord] = field(default_factory=list)
 
 

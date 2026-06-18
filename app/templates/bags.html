@@ -5,7 +5,7 @@
   <h1>Bags</h1>
   <div class="page-actions">
     <span class="last-scanned">Last scanned: {{ last_scanned_at or "Never" }}</span>
-    <form method="post" action="/bags/scan" class="scan-form">
+    <form method="post" action="/bags/scan">
       <button type="submit" {% if root_selector.enabled and not root_selector.current %}disabled{% endif %}>Scan</button>
     </form>
   </div>
@@ -18,14 +18,14 @@
     <strong class="path">{{ root_selector.current or "Not selected" }}</strong>
   </div>
   {% if root_selector.error %}
-  <div class="alert compact">{{ root_selector.error }}</div>
+  <div class="alert">{{ root_selector.error }}</div>
   {% endif %}
   <form method="post" action="/settings/bag-root" class="root-form">
-    <label class="root-input">
+    <label>
       Bag root path
       <input name="bag_root" placeholder="{{ root_selector.current or '/media/user/portable-ssd/bags' }}">
     </label>
-    <label class="root-history">
+    <label>
       Recent roots
       <select name="recent_bag_root">
         <option value="">Select recent root</option>
@@ -40,15 +40,15 @@
 {% endif %}
 
 <form class="filters" method="get" action="/bags">
-  <label class="filter-topic">
+  <label class="field-wide">
     Topic
     <input name="topic" value="{{ filters.topic }}" placeholder="e.g. /front_camera/image_raw/compressed /front_lidar/points">
   </label>
-  <label class="filter-keyword">
+  <label class="field-wide">
     Keyword (Name, Note)
     <input name="q" value="{{ filters.q }}" placeholder="e.g. calibration AND NOT (test OR demo)">
   </label>
-  <label class="filter-tag">
+  <label>
     Tags
     <select name="tag">
       <option value="">any</option>
@@ -57,16 +57,18 @@
       {% endfor %}
     </select>
   </label>
-  <label class="filter-start">
+  <label>
     Start from
     <input type="datetime-local" name="start_from" value="{{ filters.start_from }}">
   </label>
-  <label class="filter-end">
+  <label>
     Start to
     <input type="datetime-local" name="start_to" value="{{ filters.start_to }}">
   </label>
-  <button type="submit" class="filter-search">Search</button>
-  <a class="button secondary filter-clear" href="/bags">Clear</a>
+  <div class="form-actions">
+    <button type="submit">Search</button>
+    <a class="button secondary" href="/bags">Clear</a>
+  </div>
 </form>
 
 <div class="table-wrap">
