@@ -58,6 +58,9 @@ def test_bag_pages_scan_and_edit_flow(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert download_response.status_code == 200
     assert download_response.headers["content-type"] == "application/zip"
     assert "web_bag.zip" in download_response.headers["content-disposition"]
+    assert int(download_response.headers["content-length"]) == len(
+        download_response.content
+    )
     with ZipFile(io.BytesIO(download_response.content)) as archive:
         assert sorted(archive.namelist()) == [
             "web_bag/metadata.yaml",

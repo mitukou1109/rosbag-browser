@@ -3,6 +3,7 @@ from __future__ import annotations
 import binascii
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime
 import sqlite3
 import struct
@@ -45,6 +46,14 @@ templates = Jinja2Templates(directory="app/templates")
 ZIP_CHUNK_SIZE = 1024 * 1024
 ZIP32_LIMIT = 0xFFFFFFFF
 ZIP16_LIMIT = 0xFFFF
+
+
+@dataclass(frozen=True)
+class _BagArchiveEntry:
+    path: Path
+    name: str
+    size: int
+    mtime: float
 
 
 @router.get("/bags", response_class=HTMLResponse)
@@ -234,10 +243,14 @@ def download_bag(request: Request, bag_id: int) -> StreamingResponse:
     with _active_db(settings) as (bag_root, conn):
         bag = _require_bag(conn, bag_id, bag_root)
         bag_dir = _bag_directory_path(bag, bag_root)
+    archive_entries = _bag_archive_entries(bag_dir)
     return StreamingResponse(
-        _iter_bag_archive(bag_dir),
+        _iter_bag_archive(bag_dir, entries=archive_entries),
         media_type="application/zip",
-        headers={"Content-Disposition": _download_content_disposition(bag_dir.name)},
+        headers={
+            "Content-Disposition": _download_content_disposition(bag_dir.name),
+            "Content-Length": str(_bag_archive_size(archive_entries)),
+        },
     )
 
 
@@ -361,10 +374,9 @@ def _bag_directory_path(bag: dict[str, object], bag_root: Path) -> Path:
     return bag_dir
 
 
-def _iter_bag_archive(bag_dir: Path) -> Iterator[bytes]:
+def _bag_archive_entries(bag_dir: Path) -> list[_BagArchiveEntry]:
     root = bag_dir.resolve()
-    offset = 0
-    central_directory: list[dict[str, object]] = []
+    entries: list[_BagArchiveEntry] = []
     for path in sorted(bag_dir.rglob("*")):
         if not path.is_file():
             continue
@@ -373,36 +385,88 @@ def _iter_bag_archive(bag_dir: Path) -> Iterator[bytes]:
             resolved_path.relative_to(root)
         except ValueError:
             continue
-        archive_name = (Path(bag_dir.name) / path.relative_to(bag_dir)).as_posix()
         stat_result = path.stat()
-        size = stat_result.st_size
+        entries.append(
+            _BagArchiveEntry(
+                path=path,
+                name=(Path(bag_dir.name) / path.relative_to(bag_dir)).as_posix(),
+                size=stat_result.st_size,
+                mtime=stat_result.st_mtime,
+            )
+        )
+    return entries
+
+
+def _bag_archive_size(entries: list[_BagArchiveEntry]) -> int:
+    offset = 0
+    central_directory: list[dict[str, object]] = []
+    for entry in entries:
+        local_header_offset = offset
+        offset += len(
+            _zip_local_file_header(entry.name, size=entry.size, mtime=entry.mtime)
+        )
+        offset += entry.size
+        offset += len(_zip_data_descriptor(crc=0, size=entry.size))
+        central_directory.append(
+            {
+                "name": entry.name,
+                "crc": 0,
+                "size": entry.size,
+                "mtime": entry.mtime,
+                "offset": local_header_offset,
+            }
+        )
+
+    central_directory_offset = offset
+    for entry in central_directory:
+        offset += len(_zip_central_directory_header(entry))
+    central_directory_size = offset - central_directory_offset
+    return offset + len(
+        _zip_end_of_central_directory(
+            entries=len(central_directory),
+            central_directory_size=central_directory_size,
+            central_directory_offset=central_directory_offset,
+            current_offset=offset,
+        )
+    )
+
+
+def _iter_bag_archive(
+    bag_dir: Path,
+    *,
+    entries: list[_BagArchiveEntry] | None = None,
+) -> Iterator[bytes]:
+    archive_entries = entries if entries is not None else _bag_archive_entries(bag_dir)
+    offset = 0
+    central_directory: list[dict[str, object]] = []
+    for entry in archive_entries:
         local_header_offset = offset
         local_header = _zip_local_file_header(
-            archive_name,
-            size=size,
-            mtime=stat_result.st_mtime,
+            entry.name,
+            size=entry.size,
+            mtime=entry.mtime,
         )
         yield local_header
         offset += len(local_header)
 
         crc = 0
-        with path.open("rb") as handle:
+        with entry.path.open("rb") as handle:
             while chunk := handle.read(ZIP_CHUNK_SIZE):
                 crc = binascii.crc32(chunk, crc)
                 yield chunk
                 offset += len(chunk)
         crc &= ZIP32_LIMIT
 
-        data_descriptor = _zip_data_descriptor(crc=crc, size=size)
+        data_descriptor = _zip_data_descriptor(crc=crc, size=entry.size)
         yield data_descriptor
         offset += len(data_descriptor)
 
         central_directory.append(
             {
-                "name": archive_name,
+                "name": entry.name,
                 "crc": crc,
-                "size": size,
-                "mtime": stat_result.st_mtime,
+                "size": entry.size,
+                "mtime": entry.mtime,
                 "offset": local_header_offset,
             }
         )
