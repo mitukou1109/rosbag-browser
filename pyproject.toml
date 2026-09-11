@@ -19,6 +19,9 @@ dependencies = [
 [project.scripts]
 rosbag-browser = "app.cli:main"
 
+[tool.setuptools.package-data]
+app = ["static/*", "templates/*"]
+
 [project.optional-dependencies]
 test = [
   "httpx>=0.27,<1.0",

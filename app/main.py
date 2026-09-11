@@ -11,6 +11,9 @@ from app.db import connect, init_db
 from app.routes import bags
 
 
+APP_DIR = Path(__file__).resolve().parent
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     bag_root = current_bag_root(settings)
@@ -19,7 +22,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="rosbag Browser")
     app.state.settings = settings
-    app.mount("/static", StaticFiles(directory="app/static"), name="static")
+    app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
     app.include_router(bags.router)
 
     @app.get("/", include_in_schema=False)
