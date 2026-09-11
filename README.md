@@ -2,6 +2,8 @@
 
 rosbagを管理・検索するアプリ
 
+実行には[`uv`](https://github.com/astral-sh/uv)が必要です。
+
 ## 機能
 
 - `/bags` でbag一覧を表示
@@ -13,20 +15,21 @@ rosbagを管理・検索するアプリ
   - bagごとのメモ・タグ編集
   - bagをzipでダウンロード
 
-## ローカル環境で使う
-
-`BAG_ROOT` を設定せずにホストPythonで起動すると、UIから任意のローカルディレクトリを選べます。
-
-実行には[`uv`](https://github.com/astral-sh/uv)が必要です。
+## デスクトップアプリで使う
 
 ```bash
 cd /path/to/rosbag-browser
 uv sync
-uv run rosbag-browser --reload
+uv run rosbag-browser
 ```
 
-上記実行後、ブラウザで `http://localhost:8000` を開き、`Current bag root` からルートディレクトリを指定してください。
-ポートを変更する場合は `uv run rosbag-browser --port 8001 --reload` のように指定できます。
+## ブラウザで使う
+
+```bash
+uv run rosbag-browser-server --reload
+```
+
+ブラウザで `http://localhost:8000` を開いてください。ポートを変更する場合は `--port 8001` のように指定できます。
 
 ## Dockerで使う
 
