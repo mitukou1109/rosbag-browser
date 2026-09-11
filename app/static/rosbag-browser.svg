@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="rosbag Browser">
+  <rect width="512" height="512" rx="104" fill="#233552"/>
+  <path fill="#fff" d="M161 189v-9c0-42 34-76 76-76h38c42 0 76 34 76 76v9h27c34 0 62 28 62 62v142c0 34-28 62-62 62H134c-34 0-62-28-62-62V251c0-34 28-62 62-62h27Zm42 0h106v-9c0-19-15-34-34-34h-38c-19 0-34 15-34 34v9Z"/>
+  <g fill="#233552">
+    <circle cx="322" cy="344" r="9"/><circle cx="349" cy="344" r="9"/><circle cx="376" cy="344" r="9"/>
+    <circle cx="322" cy="371" r="9"/><circle cx="349" cy="371" r="9"/><circle cx="376" cy="371" r="9"/>
+    <circle cx="322" cy="398" r="9"/><circle cx="349" cy="398" r="9"/><circle cx="376" cy="398" r="9"/>
+  </g>
+</svg>

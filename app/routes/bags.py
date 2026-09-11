@@ -42,7 +42,7 @@ from app.repository import (
 )
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/templates")
+templates = Jinja2Templates(directory=Path(__file__).resolve().parent.parent / "templates")
 ZIP_CHUNK_SIZE = 1024 * 1024
 ZIP32_LIMIT = 0xFFFFFFFF
 ZIP16_LIMIT = 0xFFFF

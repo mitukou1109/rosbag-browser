@@ -12,6 +12,21 @@ pytest.importorskip("httpx")
 from fastapi.testclient import TestClient
 
 
+def test_app_works_outside_project_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("BAG_ROOT", raising=False)
+    monkeypatch.delenv("DB_PATH", raising=False)
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg-data"))
+
+    main = importlib.import_module("app.main")
+    client = TestClient(main.create_app())
+
+    assert client.get("/bags").status_code == 200
+    assert client.get("/static/style.css").status_code == 200
+
+
 def test_bag_pages_scan_and_edit_flow(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     bag_root = tmp_path / "bags"
     data_dir = tmp_path / "data"
