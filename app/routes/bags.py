@@ -88,6 +88,15 @@ def list_bags(
             excluded_directories = list_excluded_directories(conn)
             last_scanned_at = get_last_scanned_at(conn, bag_root=active_root)
     local_state = load_local_root_state(settings) if not settings.is_fixed_root else None
+    filters_query = urlencode(
+        _search_query(
+            topic=topic or "",
+            q=q or "",
+            tag=tag or "",
+            start_from=start_from or "",
+            start_to=start_to or "",
+        )
+    )
     return templates.TemplateResponse(
         name="bags.html",
         request=request,
@@ -101,6 +110,7 @@ def list_bags(
                 "start_from": start_from or "",
                 "start_to": start_to or "",
             },
+            "filters_query": filters_query,
             "tags": tags,
             "excluded_directories": excluded_directories,
             "excluded_directory_paths": excluded_directory_paths_to_text(
@@ -233,7 +243,14 @@ def bag_detail(request: Request, bag_id: int) -> HTMLResponse:
     return templates.TemplateResponse(
         name="bag_detail.html",
         request=request,
-        context={"request": request, "bag": bag, "topics": topics, "tags": tags},
+        context={
+            "request": request,
+            "bag": bag,
+            "topics": topics,
+            "tags": tags,
+            "back_url": _bags_url_with_search_query(request),
+            "filters_query": urlencode(_search_query_from_request(request)),
+        },
     )
 
 
@@ -265,7 +282,9 @@ def save_note(
         _require_bag(conn, bag_id, bag_root)
         update_note(conn, bag_id, note)
         conn.commit()
-    return RedirectResponse(url=f"/bags/{bag_id}", status_code=303)
+    return RedirectResponse(
+        url=_bag_detail_url_with_search_query(request, bag_id), status_code=303
+    )
 
 
 @router.post("/bags/{bag_id}/tags/add")
@@ -280,7 +299,9 @@ def add_bag_tag(
         if tag.strip():
             add_tag(conn, bag_id, tag)
             conn.commit()
-    return RedirectResponse(url=f"/bags/{bag_id}", status_code=303)
+    return RedirectResponse(
+        url=_bag_detail_url_with_search_query(request, bag_id), status_code=303
+    )
 
 
 @router.post("/bags/{bag_id}/tags/remove")
@@ -294,7 +315,9 @@ def remove_bag_tags(
         _require_bag(conn, bag_id, bag_root)
         remove_tags(conn, bag_id, tags_to_remove or [])
         conn.commit()
-    return RedirectResponse(url=f"/bags/{bag_id}", status_code=303)
+    return RedirectResponse(
+        url=_bag_detail_url_with_search_query(request, bag_id), status_code=303
+    )
 
 
 def _clean(value: str | None) -> str | None:
@@ -324,6 +347,26 @@ def _search_query(
         if cleaned:
             query[key] = cleaned
     return query
+
+
+def _bags_url_with_search_query(request: Request) -> str:
+    query = _search_query_from_request(request)
+    return f"/bags?{urlencode(query)}" if query else "/bags"
+
+
+def _bag_detail_url_with_search_query(request: Request, bag_id: int) -> str:
+    query = _search_query_from_request(request)
+    return f"/bags/{bag_id}?{urlencode(query)}" if query else f"/bags/{bag_id}"
+
+
+def _search_query_from_request(request: Request) -> dict[str, str]:
+    return _search_query(
+        topic=request.query_params.get("topic", ""),
+        q=request.query_params.get("q", ""),
+        tag=request.query_params.get("tag", ""),
+        start_from=request.query_params.get("start_from", ""),
+        start_to=request.query_params.get("start_to", ""),
+    )
 
 
 def _root_selector_context(

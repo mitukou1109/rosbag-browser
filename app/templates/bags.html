@@ -98,7 +98,7 @@
       {% for bag in bags %}
       <tr class="{% if bag.status == 'broken' %}row-broken{% endif %}">
         <td class="col-fit">
-          <a href="/bags/{{ bag.id }}">{{ bag.name }}</a>
+          <a href="/bags/{{ bag.id }}{% if filters_query %}?{{ filters_query }}{% endif %}">{{ bag.name }}</a>
         </td>
         <td class="note col-note">{{ bag.note }}</td>
         <td class="col-fit">

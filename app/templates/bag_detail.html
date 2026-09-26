@@ -3,7 +3,7 @@
 {% block content %}
 <section class="page-head">
   <div class="title-row">
-    <a class="button secondary" href="/bags">Back</a>
+    <a class="button secondary" href="{{ back_url }}">Back</a>
     <h1>{{ bag.name }}</h1>
     <span class="status status-{{ bag.status }}">{{ bag.status }}</span>
   </div>
@@ -29,13 +29,13 @@
 {% endif %}
 
 <section class="edit-grid">
-  <form method="post" action="/bags/{{ bag.id }}/note" class="note-form">
+  <form method="post" action="/bags/{{ bag.id }}/note{% if filters_query %}?{{ filters_query }}{% endif %}" class="note-form">
     <label for="note">Note</label>
     <textarea id="note" name="note">{{ bag.note }}</textarea>
     <button type="submit">Save note</button>
   </form>
   <div class="tag-editor">
-    <form method="post" action="/bags/{{ bag.id }}/tags/remove" class="tag-remove-form">
+    <form method="post" action="/bags/{{ bag.id }}/tags/remove{% if filters_query %}?{{ filters_query }}{% endif %}" class="tag-remove-form">
       <span class="form-label">Current tags</span>
       <div class="tag-check-list">
         {% for tag in bag.tag_list %}
@@ -50,7 +50,7 @@
       <button type="submit" class="button danger">Remove Tag</button>
     </form>
 
-    <form method="post" action="/bags/{{ bag.id }}/tags/add" class="tag-add-form">
+    <form method="post" action="/bags/{{ bag.id }}/tags/add{% if filters_query %}?{{ filters_query }}{% endif %}" class="tag-add-form">
       <label for="tag">Add tag</label>
       <div class="inline-action">
         <input id="tag" name="tag" list="tag_options" placeholder="Select or type a tag">
